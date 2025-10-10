@@ -16,7 +16,8 @@ let userApiKey = '';
 // Document Types
 const DocumentType = {
     PDF: 'pdf',
-    EPUB: 'epub'
+    EPUB: 'epub',
+    TEXT: 'text'
 };
 
 // State
@@ -35,6 +36,7 @@ let scale = 1.5;
 let rendering = false;
 const MAX_CONTEXT_TOKENS = 150000; // Conservative limit (leave 50k buffer for system prompt + response)
 let chatFontSize = 14; // Default font size in pixels
+let textZoom = 1; // Scale multiplier for plain text documents
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -48,6 +50,7 @@ const chatSidebar = document.querySelector('.chat-sidebar');
 const pdfViewer = document.getElementById('pdfViewer');
 const pdfContainer = document.getElementById('pdfContainer');
 const epubContainer = document.getElementById('epubContainer');
+const textContainer = document.getElementById('textContainer');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 const pageInput = document.getElementById('pageInput');
@@ -231,17 +234,20 @@ async function handleFileSelect(event) {
     const mimeType = file.type;
     const isPdf = mimeType === 'application/pdf' || extension === 'pdf';
     const isEpub = mimeType === 'application/epub+zip' || extension === 'epub';
+    const isText = mimeType === 'text/plain' || extension === 'txt';
 
-    if (!isPdf && !isEpub) {
-        alert('Please select a valid PDF or EPUB file');
+    if (!isPdf && !isEpub && !isText) {
+        alert('Please select a valid PDF, EPUB, or TXT file');
         return;
     }
 
     try {
         if (isPdf) {
             await loadPDF(file);
-        } else {
+        } else if (isEpub) {
             await loadEPUB(file);
+        } else if (isText) {
+            await loadText(file);
         }
 
         uploadArea.style.display = 'none';
@@ -252,7 +258,7 @@ async function handleFileSelect(event) {
         // Clear welcome message and show reset button
         chatMessages.innerHTML = '';
         resetChatBtn.style.display = 'flex';
-        const docLabel = isPdf ? 'PDF' : 'EPUB';
+        const docLabel = isPdf ? 'PDF' : isEpub ? 'EPUB' : 'TXT';
         addMessageToChat('assistant', `${docLabel} loaded! I\u2019m ready to answer questions about your document. You can also select text to copy or ask me to explain it. What would you like to know?`);
     } catch (error) {
         console.error('Error loading document:', error);
@@ -274,6 +280,10 @@ async function loadPDF(file) {
     pdfContainer.style.display = 'block';
     epubContainer.style.display = 'none';
     epubContainer.innerHTML = '';
+    if (textContainer) {
+        textContainer.style.display = 'none';
+        textContainer.textContent = '';
+    }
     pdfViewer.classList.remove('is-epub');
 
     const arrayBuffer = await file.arrayBuffer();
@@ -312,6 +322,10 @@ async function loadEPUB(file) {
     pdfContainer.style.display = 'block';
     pdfContainer.innerHTML = '';
     epubContainer.style.display = 'none';
+    if (textContainer) {
+        textContainer.style.display = 'none';
+        textContainer.textContent = '';
+    }
     pdfViewer.classList.add('is-epub');
 
     if (epubRendition) {
@@ -432,6 +446,10 @@ function getTotalPages() {
         return epubSpineItems.length || Object.keys(pdfPageTexts).length || 0;
     }
 
+    if (documentType === DocumentType.TEXT) {
+        return pdfPageTexts[1] ? 1 : 0;
+    }
+
     return 0;
 }
 
@@ -454,7 +472,11 @@ function getSmartContext(centerPage) {
         centerPage = keys[0];
     }
 
-    const label = documentType === DocumentType.EPUB ? 'Chapter' : 'Page';
+    const label = documentType === DocumentType.EPUB
+        ? 'Chapter'
+        : documentType === DocumentType.TEXT
+            ? 'Section'
+            : 'Page';
 
     // Start with current page/chapter
     let contextText = `--- ${label} ${centerPage} ---\n${pdfPageTexts[centerPage] || ''}`;
@@ -520,6 +542,48 @@ async function renderAllPages() {
     for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
         await renderPage(pageNum);
     }
+
+    updatePageInfo();
+}
+
+// Load plain text documents
+async function loadText(file) {
+    documentType = DocumentType.TEXT;
+    pdfDocument = null;
+    epubBook = null;
+    if (epubRendition) {
+        epubRendition.destroy();
+        epubRendition = null;
+    }
+    epubSpineItems = [];
+    epubHrefToIndex = {};
+
+    pdfContainer.style.display = 'none';
+    pdfContainer.innerHTML = '';
+    epubContainer.style.display = 'none';
+    epubContainer.innerHTML = '';
+    if (textContainer) {
+        textContainer.style.display = 'block';
+    }
+    pdfViewer.classList.remove('is-epub');
+
+    const text = await file.text();
+
+    pdfText = text;
+    pdfPageTexts = { 1: text };
+    currentPage = 1;
+    textZoom = 1;
+    zoomLevel.textContent = '100%';
+
+    if (textContainer) {
+        textContainer.textContent = text;
+        applyTextZoom();
+        textContainer.scrollTop = 0;
+    }
+
+    pageInput.value = 1;
+    pageInput.max = 1;
+    pageTotal.textContent = '/ 1';
 
     updatePageInfo();
 }
@@ -661,6 +725,8 @@ function goToPage(pageNum) {
         if (spineItem) {
             epubRendition.display(spineItem.href || spineItem);
         }
+    } else if (documentType === DocumentType.TEXT && textContainer) {
+        textContainer.scrollTop = 0;
     }
 
     updatePageInfo();
@@ -686,7 +752,23 @@ function changeZoom(delta) {
         const fontSize = Math.round(epubFontSize);
         epubRendition.themes.fontSize(`${fontSize}%`);
         zoomLevel.textContent = `${fontSize}%`;
+    } else if (documentType === DocumentType.TEXT && textContainer) {
+        textZoom += delta;
+        textZoom = Math.max(0.5, Math.min(textZoom, 3));
+        applyTextZoom();
+        zoomLevel.textContent = Math.round(textZoom * 100) + '%';
     }
+}
+
+function applyTextZoom() {
+    if (!textContainer) return;
+    const clamped = Math.max(0.5, Math.min(textZoom, 3));
+    const baseFontSize = 16;
+    const fontSize = Math.round(baseFontSize * clamped);
+    const lineHeight = Math.max(1.2, 1.2 * clamped + 0.4);
+
+    textContainer.style.fontSize = `${fontSize}px`;
+    textContainer.style.lineHeight = `${lineHeight.toFixed(2)}`;
 }
 
 async function fitToWidth() {
@@ -701,6 +783,10 @@ async function fitToWidth() {
         epubFontSize = 120;
         epubRendition.themes.fontSize('120%');
         zoomLevel.textContent = '120%';
+    } else if (documentType === DocumentType.TEXT && textContainer) {
+        textZoom = 1.25;
+        applyTextZoom();
+        zoomLevel.textContent = Math.round(textZoom * 100) + '%';
     }
 }
 
@@ -719,11 +805,19 @@ async function fitToPage() {
         epubFontSize = 90;
         epubRendition.themes.fontSize('90%');
         zoomLevel.textContent = '90%';
+    } else if (documentType === DocumentType.TEXT && textContainer) {
+        textZoom = 1;
+        applyTextZoom();
+        zoomLevel.textContent = '100%';
     }
 }
 
 // Track current page while scrolling
 pdfContainer.addEventListener('scroll', () => {
+    if (documentType === DocumentType.TEXT) {
+        return;
+    }
+
     const pages = documentType === DocumentType.PDF
         ? pdfContainer.querySelectorAll('.pdf-page')
         : pdfContainer.querySelectorAll('.epub-page');
@@ -763,11 +857,18 @@ function resetApp() {
     scale = 1.5;
     epubFontSize = 100;
     selectedText = '';
+    textZoom = 1;
 
     pdfContainer.innerHTML = '';
     epubContainer.innerHTML = '';
     pdfContainer.style.display = 'none';
     epubContainer.style.display = 'none';
+    if (textContainer) {
+        textContainer.textContent = '';
+        textContainer.style.display = 'none';
+        textContainer.style.fontSize = '16px';
+        textContainer.style.lineHeight = '1.6';
+    }
     pdfViewer.classList.remove('is-epub');
 
     if (pdfSection && chatSidebar) {
@@ -1360,7 +1461,7 @@ function handleTextSelection(event) {
         // Check if selection is within a text layer or epub content
         let node = selection.anchorNode;
         while (node && node !== document) {
-            if (node.classList && (node.classList.contains('textLayer') || node.classList.contains('epub-content'))) {
+            if (node.classList && (node.classList.contains('textLayer') || node.classList.contains('epub-content') || node.classList.contains('text-container'))) {
                 selectedText = text;
                 showContextMenu(event.pageX, event.pageY);
                 return;

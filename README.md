@@ -7,6 +7,7 @@ A beautiful, minimal Claude-powered assistant for chatting with local PDF and EP
 ### 📚 Document Support
 - **PDF rendering** with PDF.js - Full page-by-page rendering with text selection
 - **EPUB support** - Direct HTML rendering of EPUB chapters with preserved formatting
+- **Plain text viewer** - Lightweight rendering for `.txt` files with adjustable zoom
 - **Multi-zoom viewer** - Fit-to-page, fit-to-width, and custom zoom levels
 - **Live page tracking** - Automatic page indicator updates as you scroll
 
@@ -109,7 +110,7 @@ npm start
 ## 📖 How to Use
 
 1. **Upload a document**
-   - Click "Upload" or drag & drop a PDF/EPUB file
+   - Click "Upload" or drag & drop a PDF/EPUB/TXT file
    - Document will render immediately in the viewer
 
 2. **Navigate the document**

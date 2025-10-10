@@ -54,8 +54,8 @@
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
                     <h2>Upload Document</h2>
-                    <p>Click to select or drag and drop a PDF or EPUB file</p>
-                    <input type="file" id="fileInput" accept=".pdf,.epub" hidden>
+                    <p>Click to select or drag and drop a PDF, EPUB, or TXT file</p>
+                    <input type="file" id="fileInput" accept=".pdf,.epub,.txt,text/plain" hidden>
                     <button id="uploadBtn" class="btn-primary">Choose File</button>
                 </div>
             </div>
@@ -105,6 +105,9 @@
                     </div>
                     <div class="epub-container" id="epubContainer" style="display: none;">
                         <!-- EPUB content will be rendered here -->
+                    </div>
+                    <div class="text-container" id="textContainer" style="display: none;">
+                        <!-- Plain text content will be rendered here -->
                     </div>
                 </div>
             </div>
