@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF.AI Reader</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- KaTeX for LaTeX rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        if (typeof window !== 'undefined' && typeof JSZip !== 'undefined') {
+            window.JSZip = window.JSZip || JSZip;
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.88/dist/epub.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="app-wrapper">
+        <header class="app-header">
+            <div class="header-left">
+                <div class="brand">
+                    <span class="brand-mark"></span>
+                    <span class="brand-name">PDF.ai</span>
+                </div>
+                <button id="headerUploadBtn" class="btn-upload">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Upload
+                </button>
+            </div>
+            <div class="header-right">
+                <a href="#" class="header-link">Go to homepage &rarr;</a>
+            </div>
+        </header>
+        <div class="container">
+        <!-- PDF Viewer Section -->
+        <div class="pdf-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-content">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <h2>Upload Document</h2>
+                    <p>Click to select or drag and drop a PDF or EPUB file</p>
+                    <input type="file" id="fileInput" accept=".pdf,.epub" hidden>
+                    <button id="uploadBtn" class="btn-primary">Choose File</button>
+                </div>
+            </div>
+            <div class="pdf-viewer" id="pdfViewer" style="display: none;">
+                <div class="pdf-toolbar">
+                    <div class="toolbar-left">
+                        <button id="zoomOut" class="btn-icon" title="Zoom out">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="8" y1="11" x2="14" y2="11"></line>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </button>
+                        <button id="zoomIn" class="btn-icon" title="Zoom in">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="11" y1="8" x2="11" y2="14"></line>
+                                <line x1="8" y1="11" x2="14" y2="11"></line>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </button>
+                        <span id="zoomLevel">100%</span>
+                        <button id="fitWidth" class="btn-control">Fit Width</button>
+                        <button id="fitPage" class="btn-control">Fit Page</button>
+                    </div>
+                    <div class="toolbar-center">
+                        <button id="prevPage" class="btn-icon" title="Previous page">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <input type="number" id="pageInput" min="1" value="1" />
+                        <span id="pageTotal">/ 1</span>
+                        <button id="nextPage" class="btn-icon" title="Next page">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <button id="newFileBtn" class="btn-control">New File</button>
+                    </div>
+                </div>
+                <div class="document-container">
+                    <div class="pdf-container" id="pdfContainer">
+                        <!-- Pages will be rendered here -->
+                    </div>
+                    <div class="epub-container" id="epubContainer" style="display: none;">
+                        <!-- EPUB content will be rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Context Menu -->
+            <div id="contextMenu" class="context-menu" style="display: none;">
+                <div class="context-menu-item" id="copyText">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy
+                </div>
+                <div class="context-menu-item" id="explainText">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    Explain this
+                </div>
+                <div class="context-menu-item" id="sendToChat">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    Send to chat
+                </div>
+            </div>
+        </div>
+
+        <div class="pane-resizer" id="paneResizer"></div>
+
+        <!-- Chat Sidebar -->
+        <div class="chat-sidebar">
+            <div class="chat-header">
+                <div class="chat-header-content">
+                    <div>
+                        <h3>Chat with Document</h3>
+                        <p class="chat-subtitle">Ask me anything about your document</p>
+                    </div>
+                    <div class="chat-header-controls">
+                        <div class="font-size-control">
+                            <button id="decreaseFontBtn" class="btn-icon-header" title="Decrease font size">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 7h8m-4 10V7M20 11h-8m4 6v-6"></path>
+                                </svg>
+                            </button>
+                            <span id="fontSizeLabel" class="font-size-label">Aa</span>
+                            <button id="increaseFontBtn" class="btn-icon-header" title="Increase font size">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 7h8m-4 10V7M15 13h6m-3 3v-6"></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <button id="resetChatBtn" class="btn-icon-header" title="Clear chat history" style="display: none;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="1 4 1 10 7 10"></polyline>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome-message">
+                    <p>👋 Upload a document to start chatting!</p>
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <textarea
+                    id="chatInput"
+                    placeholder="Ask a question about your document..."
+                    rows="1"
+                    disabled
+                ></textarea>
+                <button id="sendBtn" class="btn-send" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    </div>
+</body>
+</html>

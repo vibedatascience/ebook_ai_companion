@@ -1,0 +1,21 @@
+{
+  "name": "pdf-ai-reader",
+  "version": "1.0.0",
+  "description": "A minimal version of pdf.ai - chat with your PDF documents using Claude AI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "pdf",
+    "ai",
+    "chat",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
