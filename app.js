@@ -10,6 +10,9 @@ if (globalConfig && globalConfig.API_URL && globalConfig.API_URL !== DEFAULT_API
     console.info(`📡 Using custom API endpoint: ${globalConfig.API_URL}`);
 }
 
+const API_KEY_STORAGE_KEY = 'anthropicApiKey';
+let userApiKey = '';
+
 // Document Types
 const DocumentType = {
     PDF: 'pdf',
@@ -66,6 +69,14 @@ const sendToChatBtn = document.getElementById('sendToChat');
 const increaseFontBtn = document.getElementById('increaseFontBtn');
 const decreaseFontBtn = document.getElementById('decreaseFontBtn');
 const fontSizeLabel = document.getElementById('fontSizeLabel');
+const apiKeyBtn = document.getElementById('apiKeyBtn');
+const apiKeyStatus = document.getElementById('apiKeyStatus');
+const apiKeyModal = document.getElementById('apiKeyModal');
+const apiKeyBackdrop = document.getElementById('apiKeyBackdrop');
+const apiKeyClose = document.getElementById('apiKeyClose');
+const apiKeyForm = document.getElementById('apiKeyForm');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const apiKeyClear = document.getElementById('apiKeyClear');
 
 // Event Listeners
 uploadBtn.addEventListener('click', () => fileInput.click());
@@ -108,6 +119,65 @@ explainTextBtn.addEventListener('click', explainSelectedText);
 sendToChatBtn.addEventListener('click', sendSelectedTextToChat);
 increaseFontBtn.addEventListener('click', increaseChatFontSize);
 decreaseFontBtn.addEventListener('click', decreaseChatFontSize);
+
+if (apiKeyBtn) {
+    apiKeyBtn.addEventListener('click', () => {
+        if (!apiKeyModal) return;
+        apiKeyModal.classList.remove('hidden');
+        if (apiKeyInput) {
+            apiKeyInput.value = userApiKey || '';
+            apiKeyInput.focus();
+        }
+    });
+}
+
+if (apiKeyClose) {
+    apiKeyClose.addEventListener('click', hideApiKeyModal);
+}
+
+if (apiKeyBackdrop) {
+    apiKeyBackdrop.addEventListener('click', hideApiKeyModal);
+}
+
+if (apiKeyForm) {
+    apiKeyForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!apiKeyInput) return;
+        const value = apiKeyInput.value.trim();
+        if (value) {
+            try {
+                localStorage.setItem(API_KEY_STORAGE_KEY, value);
+                userApiKey = value;
+                updateApiKeyStatus();
+            } catch (storageError) {
+                console.error('Failed to store API key:', storageError);
+            }
+        }
+        hideApiKeyModal();
+    });
+}
+
+if (apiKeyClear) {
+    apiKeyClear.addEventListener('click', () => {
+        try {
+            localStorage.removeItem(API_KEY_STORAGE_KEY);
+        } catch (storageError) {
+            console.error('Failed to clear API key:', storageError);
+        }
+        userApiKey = '';
+        updateApiKeyStatus();
+        if (apiKeyInput) {
+            apiKeyInput.value = '';
+            apiKeyInput.focus();
+        }
+    });
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && apiKeyModal && !apiKeyModal.classList.contains('hidden')) {
+        hideApiKeyModal();
+    }
+});
 
 // Pane resizing
 if (paneResizer && container && pdfSection && chatSidebar) {
@@ -883,9 +953,7 @@ async function sendMessage() {
         // Call our local API server with streaming
         const response = await fetch(API_URL, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: buildRequestHeaders(),
             body: JSON.stringify({
                 message: message,
                 pdfText: contextText,
@@ -1143,6 +1211,49 @@ function updateFontSizeLabel() {
     }, 200);
 }
 
+function hideApiKeyModal() {
+    if (!apiKeyModal) return;
+    apiKeyModal.classList.add('hidden');
+    if (apiKeyInput) {
+        apiKeyInput.blur();
+    }
+}
+
+function updateApiKeyStatus() {
+    if (!apiKeyStatus) return;
+
+    if (userApiKey) {
+        apiKeyStatus.textContent = 'Set';
+        apiKeyStatus.classList.add('set');
+    } else {
+        apiKeyStatus.textContent = 'Not set';
+        apiKeyStatus.classList.remove('set');
+    }
+}
+
+function loadStoredApiKey() {
+    try {
+        const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
+        userApiKey = stored || '';
+    } catch (storageError) {
+        console.error('Failed to load stored API key:', storageError);
+        userApiKey = '';
+    }
+    updateApiKeyStatus();
+}
+
+function buildRequestHeaders() {
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+
+    if (userApiKey) {
+        headers['x-api-key'] = userApiKey;
+    }
+
+    return headers;
+}
+
 // Load saved font size on startup
 function loadChatFontSize() {
     const saved = localStorage.getItem('chatFontSize');
@@ -1156,6 +1267,7 @@ function loadChatFontSize() {
 
 // Initialize font size
 loadChatFontSize();
+loadStoredApiKey();
 
 // Make internal links clickable for navigation
 function makeLinksClickable(container, currentChapter) {

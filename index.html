@@ -160,6 +160,13 @@
                                 </svg>
                             </button>
                         </div>
+                        <button id="apiKeyBtn" class="btn-icon-header" title="Set Claude API key">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 10a6 6 0 1 0-11.9 1M12 14v7m0-7l3 3m-3-3-3 3" />
+                                <circle cx="12" cy="12" r="2" />
+                            </svg>
+                            <span id="apiKeyStatus" class="api-key-status">Not set</span>
+                        </button>
                         <button id="resetChatBtn" class="btn-icon-header" title="Clear chat history" style="display: none;">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="1 4 1 10 7 10"></polyline>
@@ -192,6 +199,27 @@
     </div>
 
     <script src="app.js"></script>
+    <div id="apiKeyModal" class="modal hidden">
+        <div class="modal-backdrop" id="apiKeyBackdrop"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="apiKeyClose" aria-label="Close API key dialog">×</button>
+            <h2>Claude API Key</h2>
+            <p class="modal-description">
+                Enter your Anthropic API key. It is stored in your browser only and added to each request.
+            </p>
+            <form id="apiKeyForm">
+                <label for="apiKeyInput">API Key</label>
+                <input type="password" id="apiKeyInput" autocomplete="off" placeholder="sk-ant-..." />
+                <div class="modal-actions">
+                    <button type="button" id="apiKeyClear" class="btn-secondary">Clear</button>
+                    <button type="submit" class="btn-primary">Save</button>
+                </div>
+            </form>
+            <p class="modal-hint">
+                Tip: You can create a new key in your Anthropic account dashboard. Never share your key with others.
+            </p>
+        </div>
+    </div>
     </div>
 </body>
 </html>

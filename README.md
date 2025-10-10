@@ -66,19 +66,23 @@ npm install
 ```
 
 3. **Configure API key**
-   Set your Anthropic API key as an environment variable before starting the server.
+   Choose the option that fits your deployment:
 
-   macOS/Linux:
-   ```bash
-   export ANTHROPIC_API_KEY=your-key-here
-   ```
+   - **Environment variable (recommended for shared servers)**  
+     macOS/Linux:
+     ```bash
+     export ANTHROPIC_API_KEY=your-key-here
+     ```
+     Windows PowerShell:
+     ```powershell
+     setx ANTHROPIC_API_KEY "your-key-here"
+     ```
 
-   Windows PowerShell:
-   ```powershell
-   setx ANTHROPIC_API_KEY "your-key-here"
-   ```
+   - **Per-user key (ideal for GitHub Pages / personal use)**  
+     Leave the server variable empty and click **Set Claude API key** in the app header.  
+     The key is saved locally in your browser’s `localStorage` and sent only with your requests.
 
-   The server validates this variable on each request and will return an error if it is missing.
+   The server validates the presence of a key on every request and returns an error if none is provided.
 
 4. **Start the server**
 ```bash
@@ -99,6 +103,7 @@ npm start
   </script>
   ```
   Omit the script for local development and the app will fall back to `http://localhost:3001/api/chat`.
+- Each visitor can click **Set Claude API key** (top-right of the chat header) to store their own Anthropic key locally.
 - Enable GitHub Pages (Settings → Pages → Build and deployment → GitHub Actions) to activate the workflow.
 
 ## 📖 How to Use

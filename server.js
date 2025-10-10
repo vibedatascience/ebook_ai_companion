@@ -10,7 +10,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5-20250929';
 
 if (!ANTHROPIC_API_KEY) {
-    console.warn('⚠️ ANTHROPIC_API_KEY is not set. Streaming requests will fail until the environment variable is provided.');
+    console.warn('⚠️ ANTHROPIC_API_KEY is not set. The server will expect each request to supply an API key header.');
 }
 
 // Middleware
@@ -30,10 +30,13 @@ app.post('/api/chat', async (req, res) => {
         return res.status(400).json({ error: 'Message and PDF text are required' });
     }
 
-    if (!ANTHROPIC_API_KEY) {
+    const requestApiKeyHeader = (req.headers['x-api-key'] || '').toString().trim();
+    const effectiveApiKey = requestApiKeyHeader || ANTHROPIC_API_KEY;
+
+    if (!effectiveApiKey) {
         return res.status(500).json({
             error: 'Server misconfiguration',
-            details: 'ANTHROPIC_API_KEY environment variable is missing'
+            details: 'No Anthropic API key provided. Set ANTHROPIC_API_KEY or supply an x-api-key header.'
         });
     }
 
@@ -99,7 +102,7 @@ app.post('/api/chat', async (req, res) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_API_KEY,
+                'x-api-key': effectiveApiKey,
                 'anthropic-version': '2023-06-01'
             },
             body: JSON.stringify(requestBody)
