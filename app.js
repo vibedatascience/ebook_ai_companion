@@ -2,7 +2,13 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // API Configuration
-const API_URL = 'http://localhost:3001/api/chat';
+const DEFAULT_API_URL = 'http://localhost:3001/api/chat';
+const globalConfig = typeof window !== 'undefined' ? window.PDF_AI_CONFIG : undefined;
+const API_URL = (globalConfig && globalConfig.API_URL) || DEFAULT_API_URL;
+
+if (globalConfig && globalConfig.API_URL && globalConfig.API_URL !== DEFAULT_API_URL) {
+    console.info(`📡 Using custom API endpoint: ${globalConfig.API_URL}`);
+}
 
 // Document Types
 const DocumentType = {

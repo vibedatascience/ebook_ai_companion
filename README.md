@@ -88,6 +88,19 @@ npm start
 5. **Open in browser**
    Navigate to `http://localhost:3001`
 
+## 🌐 GitHub Pages Frontend
+
+- Every push to `main` runs `.github/workflows/deploy-pages.yml`, which publishes the static frontend to GitHub Pages.
+- The site is static-only, so you still need to run the Express server somewhere reachable (Render, Fly.io, your own VPS, etc.).
+- To point the UI at a remote backend, add a script tag _before_ `app.js` in `index.html`:
+  ```html
+  <script>
+    window.PDF_AI_CONFIG = { API_URL: 'https://your-backend.example.com/api/chat' };
+  </script>
+  ```
+  Omit the script for local development and the app will fall back to `http://localhost:3001/api/chat`.
+- Enable GitHub Pages (Settings → Pages → Build and deployment → GitHub Actions) to activate the workflow.
+
 ## 📖 How to Use
 
 1. **Upload a document**
