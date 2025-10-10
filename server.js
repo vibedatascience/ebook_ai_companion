@@ -22,9 +22,12 @@ app.use(express.static(path.join(__dirname)));
 
 // API endpoint to chat with Claude
 app.post('/api/chat', async (req, res) => {
-    const { message, pdfText, contextInfo } = req.body;
+    const { message, pdfText, contextInfo, conversationHistory } = req.body;
 
-    console.log('📨 Received chat request:', { message: message.substring(0, 50) + '...' });
+    console.log('📨 Received chat request:', {
+        message: message.substring(0, 50) + '...',
+        historyLength: conversationHistory ? conversationHistory.length : 0
+    });
 
     if (!message || !pdfText) {
         return res.status(400).json({ error: 'Message and PDF text are required' });
@@ -41,7 +44,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // Build enhanced system message
-    let systemMessage = `Answer questions about this document clearly and accurately.
+    let systemMessage = `Answer questions about this document clearly and accurately. Always elaborate and use maximum amount of tokens possible.
 
 **Your Sources:**
 1. The document content below (primary source)
@@ -53,7 +56,6 @@ app.post('/api/chat', async (req, res) => {
 - Reference page numbers when quoting
 - Match the content type:
   * Code → provide examples with syntax highlighting
-  * Math → use LaTeX ($...$ inline, $$...$$ display)
   * Technical → explain jargon
   * Reports → summarize key points
 
@@ -66,12 +68,15 @@ You can use HTML/CSS to make responses clearer and more engaging:
 - Add visual separators with <hr> or colored dividers
 - Box important warnings/notes with colored borders
 - Make key terms bold or use larger font sizes
-Be visual when it helps comprehension - don't just write walls of text.
+Be visual when it helps comprehension - don't just write walls of text. You're allowed to make graphs and stuff.
+WHEN ASKED FOR CODE, PROVIDE ACTUAL CODE BLOCKS WITH SYNTAX HIGHLIGHTING. DO NOT JUST DESCRIBE THE CODE.
+
+ALSO PROVIDE INPUTS AND OUTPUTS CLEARLY. SAMPLE DATA IF YOU KNOW ABOUT IT> BE GRANULAR> YOU're allowed to use as many tokens as possible
+IF USER ASKS TO REWTITE SOME FICTION IN SOME STYLE, JUST DO THAT. NO NEED TO DO EXTRA SHIT OVER THERE.
 
 **Avoid:**
 - Speculation beyond what's stated
-- Lengthy preambles
-- Restating the question back`;
+- Lengthy preambles`;
 
     if (contextInfo && contextInfo.includedPages) {
         const pageRange = contextInfo.includedPages.length > 1
@@ -92,16 +97,39 @@ Be visual when it helps comprehension - don't just write walls of text.
     systemMessage += `\n\n## PDF Document Content:\n\n${pdfText}\n\n## User's Question:\n${message}\n\n---\n\nProvide a clear, well-formatted answer based on the PDF content above.`;
 
     try {
+        // Build messages array with conversation history
+        const messages = [];
+
+        // Add conversation history if present
+        if (conversationHistory && conversationHistory.length > 0) {
+            // First message includes the system context + first user question
+            messages.push({
+                role: 'user',
+                content: systemMessage.replace(
+                    `## User's Question:\n${message}`,
+                    `## User's Question:\n${conversationHistory[0].content}`
+                )
+            });
+
+            // Add the rest of the conversation
+            for (let i = 1; i < conversationHistory.length; i++) {
+                messages.push(conversationHistory[i]);
+            }
+        }
+
+        // Add current message
+        messages.push({
+            role: 'user',
+            content: conversationHistory && conversationHistory.length > 0
+                ? message  // Just the message if we have history
+                : systemMessage  // Full context if first message
+        });
+
         const requestBody = {
             model: MODEL,
             max_tokens: 64000,
             stream: true, // Enable streaming
-            messages: [
-                {
-                    role: 'user',
-                    content: systemMessage
-                }
-            ]
+            messages: messages
         };
 
         console.log('🚀 Sending request to Anthropic API...');

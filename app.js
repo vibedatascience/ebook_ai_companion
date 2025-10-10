@@ -37,6 +37,7 @@ let rendering = false;
 const MAX_CONTEXT_TOKENS = 150000; // Conservative limit (leave 50k buffer for system prompt + response)
 let chatFontSize = 14; // Default font size in pixels
 let textZoom = 1; // Scale multiplier for plain text documents
+let conversationHistory = []; // Store conversation messages for context
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -858,6 +859,7 @@ function resetApp() {
     epubFontSize = 100;
     selectedText = '';
     textZoom = 1;
+    conversationHistory = []; // Clear conversation history on new document
 
     pdfContainer.innerHTML = '';
     epubContainer.innerHTML = '';
@@ -989,6 +991,7 @@ async function copyCode(button, code) {
 function resetChat() {
     if (confirm('Clear all chat messages?')) {
         chatMessages.innerHTML = '';
+        conversationHistory = []; // Clear conversation history
         addMessageToChat('assistant', 'Chat cleared! What would you like to know about the document?');
     }
 }
@@ -1058,6 +1061,7 @@ async function sendMessage() {
             body: JSON.stringify({
                 message: message,
                 pdfText: contextText,
+                conversationHistory: conversationHistory, // Send conversation history
                 contextInfo: {
                     currentPage: currentPage,
                     totalPages: totalPages,
@@ -1161,6 +1165,17 @@ async function sendMessage() {
             if (fullText && !messageDiv.classList.contains('message-streaming')) {
                 finalizeStreamingMessage(messageDiv, fullText);
             }
+
+            // Add to conversation history
+            conversationHistory.push({
+                role: 'user',
+                content: message
+            });
+            conversationHistory.push({
+                role: 'assistant',
+                content: fullText
+            });
+
         } catch (streamError) {
             console.error('Error reading stream:', streamError);
             throw streamError;
@@ -1202,6 +1217,9 @@ function createStreamingMessageContainer() {
 function updateStreamingMessage(messageDiv, text) {
     const contentDiv = messageDiv.querySelector('.message-content');
 
+    // Check if user is near the bottom before updating (with 100px threshold)
+    const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+
     // Parse markdown in real-time (but don't apply syntax highlighting yet)
     let html = marked.parse(text);
     html = renderLatex(html);
@@ -1211,8 +1229,10 @@ function updateStreamingMessage(messageDiv, text) {
 
     contentDiv.innerHTML = html;
 
-    // Auto-scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Only auto-scroll if user was already near the bottom
+    if (isNearBottom) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 }
 
 function finalizeStreamingMessage(messageDiv, text) {

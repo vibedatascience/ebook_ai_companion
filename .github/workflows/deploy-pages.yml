@@ -24,6 +24,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Configure API endpoint
+        run: |
+          # Get the backend URL from GitHub secrets or use default
+          BACKEND_URL="${{ secrets.BACKEND_API_URL }}"
+
+          if [ -z "$BACKEND_URL" ]; then
+            echo "⚠️ BACKEND_API_URL secret not set. Users will need to run the backend locally or provide their own API key."
+          else
+            echo "✅ Configuring backend URL: $BACKEND_URL"
+            # Inject the config script before app.js
+            sed -i "s|<script src=\"app.js\"></script>|<script>\n      window.PDF_AI_CONFIG = { API_URL: '$BACKEND_URL' };\n    </script>\n    <script src=\"app.js\"></script>|g" index.html
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
