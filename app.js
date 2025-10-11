@@ -38,6 +38,7 @@ const MAX_CONTEXT_TOKENS = 150000; // Conservative limit (leave 50k buffer for s
 let chatFontSize = 14; // Default font size in pixels
 let textZoom = 1; // Scale multiplier for plain text documents
 let conversationHistory = []; // Store conversation messages for context
+let currentStream = null; // Track active streaming request for cancellation
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -65,6 +66,7 @@ const newFileBtn = document.getElementById('newFileBtn');
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
+const stopStreamBtn = document.getElementById('stopStreamBtn');
 const resetChatBtn = document.getElementById('resetChatBtn');
 const contextMenu = document.getElementById('contextMenu');
 const copyTextBtn = document.getElementById('copyText');
@@ -104,6 +106,11 @@ chatInput.addEventListener('keydown', (e) => {
         sendMessage();
     }
 });
+
+if (stopStreamBtn) {
+    stopStreamBtn.style.display = 'none';
+    stopStreamBtn.addEventListener('click', stopCurrentStream);
+}
 
 // Auto-resize textarea
 chatInput.addEventListener('input', function() {
@@ -945,6 +952,11 @@ function addMessageToChat(role, content) {
     }
 
     messageDiv.appendChild(contentDiv);
+    if (role === 'assistant') {
+        attachExportButton(messageDiv, content);
+    } else if (role === 'user') {
+        attachEditButton(messageDiv, content);
+    }
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -984,6 +996,152 @@ async function copyCode(button, code) {
         }, 2000);
     } catch (err) {
         console.error('Failed to copy code:', err);
+    }
+}
+
+function attachExportButton(messageDiv, markdown) {
+    if (!messageDiv || typeof markdown !== 'string' || markdown.trim().length === 0) {
+        return;
+    }
+
+    messageDiv.dataset.rawMarkdown = markdown;
+
+    let actions = messageDiv.querySelector('.message-actions');
+    if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'message-actions';
+        messageDiv.appendChild(actions);
+    }
+
+    let exportBtn = actions.querySelector('.export-md-btn');
+    if (!exportBtn) {
+        exportBtn = document.createElement('button');
+        exportBtn.type = 'button';
+        exportBtn.className = 'message-action-btn export-md-btn';
+        exportBtn.textContent = 'Save .md';
+        actions.appendChild(exportBtn);
+    }
+
+    exportBtn.onclick = () => downloadMarkdown(markdown);
+}
+
+function attachEditButton(messageDiv, originalContent) {
+    if (!messageDiv || typeof originalContent !== 'string' || originalContent.trim().length === 0) {
+        return;
+    }
+
+    messageDiv.dataset.originalContent = originalContent;
+
+    let actions = messageDiv.querySelector('.message-actions');
+    if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'message-actions';
+        messageDiv.appendChild(actions);
+    }
+
+    let editBtn = actions.querySelector('.edit-msg-btn');
+    if (!editBtn) {
+        editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'message-action-btn edit-msg-btn';
+        editBtn.textContent = 'Edit';
+        actions.appendChild(editBtn);
+    }
+
+    editBtn.onclick = () => editUserMessage(messageDiv, originalContent);
+}
+
+function editUserMessage(messageDiv, originalContent) {
+    // Find the index of this message in the chat
+    const allMessages = Array.from(chatMessages.querySelectorAll('.message'));
+    const messageIndex = allMessages.indexOf(messageDiv);
+
+    if (messageIndex === -1) return;
+
+    // Populate the input with the original message
+    chatInput.value = originalContent;
+    chatInput.focus();
+
+    // Auto-resize textarea
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+
+    // Remove all messages from this point onwards (user message + all subsequent messages)
+    const messagesToRemove = allMessages.slice(messageIndex);
+    messagesToRemove.forEach(msg => msg.remove());
+
+    // Update conversation history - remove from this point onwards
+    // Find the corresponding position in conversation history
+    let historyIndex = 0;
+    for (let i = 0; i < allMessages.length && i < messageIndex; i++) {
+        const msg = allMessages[i];
+        if (msg.classList.contains('message-user') || msg.classList.contains('message-assistant')) {
+            historyIndex++;
+        }
+    }
+
+    // Truncate conversation history
+    if (historyIndex < conversationHistory.length) {
+        conversationHistory = conversationHistory.slice(0, historyIndex);
+    }
+}
+
+function downloadMarkdown(markdown) {
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-');
+    const filename = `assistant-response-${timestamp}.md`;
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function stopCurrentStream() {
+    if (!currentStream || currentStream.aborted) {
+        return;
+    }
+
+    currentStream.aborted = true;
+
+    if (stopStreamBtn) {
+        stopStreamBtn.disabled = true;
+        stopStreamBtn.classList.add('is-stopping');
+    }
+
+    try {
+        currentStream.controller?.abort();
+    } catch (abortError) {
+        console.warn('Failed to abort stream:', abortError);
+    }
+}
+
+function cleanupStreamingState() {
+    if (stopStreamBtn) {
+        stopStreamBtn.style.display = 'none';
+        stopStreamBtn.disabled = false;
+        stopStreamBtn.classList.remove('is-stopping');
+    }
+    currentStream = null;
+}
+
+function markMessageAsStopped(messageDiv) {
+    if (!messageDiv) return;
+
+    messageDiv.classList.add('message-stopped');
+
+    const contentDiv = messageDiv.querySelector('.message-content');
+    if (!contentDiv) return;
+
+    if (!contentDiv.querySelector('.message-stop-notice')) {
+        const notice = document.createElement('div');
+        notice.className = 'message-stop-notice';
+        notice.textContent = 'Response stopped by user';
+        contentDiv.appendChild(notice);
     }
 }
 
@@ -1038,6 +1196,16 @@ async function sendMessage() {
     // Add loading indicator
     addLoadingIndicator();
 
+    let messageDiv = null;
+    let fullText = '';
+    let streamState = null;
+    let streamAbortedByUser = false;
+    let abortHandled = false;
+
+    const controller = new AbortController();
+    streamState = { controller, aborted: false, messageDiv: null };
+    currentStream = streamState;
+
     try {
         // Get smart context around current page
         const smartContext = getSmartContext(currentPage);
@@ -1058,6 +1226,7 @@ async function sendMessage() {
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: buildRequestHeaders(),
+            signal: controller.signal,
             body: JSON.stringify({
                 message: message,
                 pdfText: contextText,
@@ -1097,6 +1266,7 @@ async function sendMessage() {
             // Remove loading and add response
             removeLoadingIndicator();
             addMessageToChat('assistant', assistantMessage);
+            cleanupStreamingState();
 
             // Re-enable input
             chatInput.disabled = false;
@@ -1110,13 +1280,21 @@ async function sendMessage() {
         console.log('✅ Streaming response detected!');
 
         // Create a message container for streaming
-        const messageDiv = createStreamingMessageContainer();
-        let fullText = '';
+        messageDiv = createStreamingMessageContainer();
+        fullText = '';
+        streamState.messageDiv = messageDiv;
+
+        if (stopStreamBtn) {
+            stopStreamBtn.style.display = 'flex';
+            stopStreamBtn.disabled = false;
+            stopStreamBtn.classList.remove('is-stopping');
+        }
 
         console.log('Starting to read stream...');
 
         // Read the stream
         const reader = response.body.getReader();
+        streamState.reader = reader;
         const decoder = new TextDecoder();
         let chunkCount = 0;
 
@@ -1161,31 +1339,90 @@ async function sendMessage() {
 
             console.log(`Stream complete. Received ${chunkCount} text chunks`);
 
-            // If we have text but didn't get [DONE], finalize anyway
-            if (fullText && !messageDiv.classList.contains('message-streaming')) {
-                finalizeStreamingMessage(messageDiv, fullText);
+            if (messageDiv.classList.contains('message-streaming')) {
+                if (fullText.trim().length > 0) {
+                    finalizeStreamingMessage(messageDiv, fullText);
+                } else {
+                    messageDiv.classList.remove('message-streaming');
+                }
             }
 
-            // Add to conversation history
-            conversationHistory.push({
-                role: 'user',
-                content: message
-            });
-            conversationHistory.push({
-                role: 'assistant',
-                content: fullText
-            });
-
         } catch (streamError) {
-            console.error('Error reading stream:', streamError);
-            throw streamError;
+            if (streamState.aborted) {
+                streamAbortedByUser = true;
+                abortHandled = true;
+                console.info('Stream stopped by user');
+
+                if (fullText.trim().length > 0) {
+                    finalizeStreamingMessage(messageDiv, fullText);
+                } else {
+                    messageDiv.classList.remove('message-streaming');
+                    const contentDiv = messageDiv.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = '';
+                    }
+                }
+
+                markMessageAsStopped(messageDiv);
+            } else {
+                console.error('Error reading stream:', streamError);
+                throw streamError;
+            }
+        }
+
+        // Add to conversation history
+        conversationHistory.push({
+            role: 'user',
+            content: message
+        });
+
+        const trimmed = fullText.trim();
+        const assistantContent = trimmed.length > 0
+            ? fullText
+            : streamState.aborted
+                ? '[Response stopped by user]'
+                : '';
+
+        conversationHistory.push({
+            role: 'assistant',
+            content: assistantContent
+        });
+
+        if (streamState.aborted && !abortHandled) {
+            markMessageAsStopped(messageDiv);
+            abortHandled = true;
         }
 
     } catch (error) {
-        console.error('Error calling Claude API:', error);
-        removeLoadingIndicator();
-        addMessageToChat('assistant', 'Sorry, I encountered an error processing your request. Please try again.');
+        if (currentStream && currentStream.aborted) {
+            streamAbortedByUser = true;
+        }
+
+        if (streamAbortedByUser || error.name === 'AbortError') {
+            console.info('Request aborted by user');
+            if (!abortHandled) {
+                removeLoadingIndicator();
+                if (messageDiv) {
+                    if (messageDiv.classList.contains('message-streaming')) {
+                        messageDiv.classList.remove('message-streaming');
+                        const contentDiv = messageDiv.querySelector('.message-content');
+                        if (contentDiv) {
+                            contentDiv.innerHTML = '';
+                        }
+                    }
+                    markMessageAsStopped(messageDiv);
+                } else {
+                    addMessageToChat('assistant', 'Response stopped by user.');
+                }
+                abortHandled = true;
+            }
+        } else {
+            console.error('Error calling Claude API:', error);
+            removeLoadingIndicator();
+            addMessageToChat('assistant', 'Sorry, I encountered an error processing your request. Please try again.');
+        }
     } finally {
+        cleanupStreamingState();
         // Re-enable input
         chatInput.disabled = false;
         sendBtn.disabled = false;
@@ -1278,6 +1515,8 @@ function finalizeStreamingMessage(messageDiv, text) {
         wrapper.appendChild(header);
         wrapper.appendChild(pre);
     });
+
+    attachExportButton(messageDiv, text);
 
     // Final auto-scroll
     chatMessages.scrollTop = chatMessages.scrollHeight;

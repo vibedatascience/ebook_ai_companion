@@ -322,8 +322,9 @@ body {
     right: 0;
     bottom: 0;
     overflow: hidden;
-    opacity: 0.2;
+    opacity: 1;
     line-height: 1.0;
+    mix-blend-mode: multiply;
 }
 
 .pdf-page .textLayer > span {
@@ -332,10 +333,13 @@ body {
     white-space: pre;
     cursor: text;
     transform-origin: 0% 0%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 .pdf-page .textLayer ::selection {
     background: rgba(242, 101, 50, 0.35);
+    color: transparent;
 }
 
 /* PDF Link Annotations */
@@ -781,6 +785,7 @@ body {
     border-bottom: 1px solid rgba(214, 200, 170, 0.4);
     animation: fadeIn 0.3s ease-in;
     color: #2e2a24;
+    flex-wrap: wrap;
 }
 
 .message:last-child {
@@ -835,6 +840,50 @@ body {
 .message-assistant .message-content {
     background: #ffffff;
     border-color: #e6dcc8;
+}
+
+.message-stopped .message-content {
+    border-color: #f2b08c;
+    box-shadow: inset 0 0 0 1px rgba(242, 176, 140, 0.2);
+}
+
+.message-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.message-action-btn {
+    background: #fdf0d9;
+    border: 1px solid #f2d2b1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #a15a2c;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.message-action-btn:hover {
+    background: #f7e3c4;
+    border-color: #e3b789;
+}
+
+.message-action-btn:focus-visible {
+    outline: 2px solid #e3b789;
+    outline-offset: 2px;
+}
+
+.message-stop-notice {
+    margin-top: 12px;
+    padding: 6px 10px;
+    border-left: 3px solid #f26532;
+    background: #fff3e5;
+    font-size: 12px;
+    color: #a15a2c;
+    border-radius: 8px;
 }
 
 /* Markdown styles in messages */
@@ -1034,6 +1083,42 @@ body {
     padding: 12px;
     background: #f8f4eb;
     border-top: 1px solid #e6dcc8;
+}
+
+#stopStreamBtn {
+    display: none;
+}
+
+.btn-stop {
+    background: #c24936;
+    color: white;
+    border: none;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+
+.btn-stop svg {
+    pointer-events: none;
+}
+
+.btn-stop:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(194, 73, 54, 0.35);
+}
+
+.btn-stop:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-stop.is-stopping {
+    opacity: 0.7;
 }
 
 #chatInput {
