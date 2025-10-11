@@ -551,6 +551,11 @@ async function renderAllPages() {
         await renderPage(pageNum);
     }
 
+    // Re-render all highlights after pages are rendered
+    pdfHighlights.forEach(highlight => {
+        renderHighlightsOnPage(highlight.pageNum);
+    });
+
     updatePageInfo();
 }
 
@@ -584,7 +589,13 @@ async function loadText(file) {
     zoomLevel.textContent = '100%';
 
     if (textContainer) {
-        textContainer.textContent = text;
+        // Create a white page wrapper similar to PDF pages
+        const textPage = document.createElement('div');
+        textPage.className = 'text-page';
+        textPage.textContent = text;
+
+        textContainer.innerHTML = '';
+        textContainer.appendChild(textPage);
         applyTextZoom();
         textContainer.scrollTop = 0;
     }
@@ -622,6 +633,10 @@ async function renderPage(pageNumber) {
 
     pageDiv.appendChild(canvas);
     pageDiv.appendChild(textLayerDiv);
+
+    // Add highlight layer
+    addHighlightLayer(pageDiv);
+
     pdfContainer.appendChild(pageDiv);
 
     // Render canvas
@@ -867,6 +882,7 @@ function resetApp() {
     selectedText = '';
     textZoom = 1;
     conversationHistory = []; // Clear conversation history on new document
+    pdfHighlights = []; // Clear highlights on new document
 
     pdfContainer.innerHTML = '';
     epubContainer.innerHTML = '';
@@ -1006,6 +1022,10 @@ function attachExportButton(messageDiv, markdown) {
 
     messageDiv.dataset.rawMarkdown = markdown;
 
+    // Get the rendered HTML content
+    const contentDiv = messageDiv.querySelector('.message-content');
+    const renderedHTML = contentDiv ? contentDiv.innerHTML : '';
+
     let actions = messageDiv.querySelector('.message-actions');
     if (!actions) {
         actions = document.createElement('div');
@@ -1013,16 +1033,38 @@ function attachExportButton(messageDiv, markdown) {
         messageDiv.appendChild(actions);
     }
 
-    let exportBtn = actions.querySelector('.export-md-btn');
-    if (!exportBtn) {
-        exportBtn = document.createElement('button');
-        exportBtn.type = 'button';
-        exportBtn.className = 'message-action-btn export-md-btn';
-        exportBtn.textContent = 'Save .md';
-        actions.appendChild(exportBtn);
+    // Markdown download button
+    let exportMdBtn = actions.querySelector('.export-md-btn');
+    if (!exportMdBtn) {
+        exportMdBtn = document.createElement('button');
+        exportMdBtn.type = 'button';
+        exportMdBtn.className = 'message-action-btn export-md-btn';
+        exportMdBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>`;
+        exportMdBtn.title = 'Download as Markdown (.md)';
+        actions.appendChild(exportMdBtn);
     }
 
-    exportBtn.onclick = () => downloadMarkdown(markdown);
+    exportMdBtn.onclick = () => downloadMarkdown(markdown);
+
+    // HTML download button
+    let exportHtmlBtn = actions.querySelector('.export-html-btn');
+    if (!exportHtmlBtn) {
+        exportHtmlBtn = document.createElement('button');
+        exportHtmlBtn.type = 'button';
+        exportHtmlBtn.className = 'message-action-btn export-html-btn';
+        exportHtmlBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>`;
+        exportHtmlBtn.title = 'Download as HTML';
+        actions.appendChild(exportHtmlBtn);
+    }
+
+    exportHtmlBtn.onclick = () => downloadHTML(renderedHTML);
 }
 
 function attachEditButton(messageDiv, originalContent) {
@@ -1044,7 +1086,11 @@ function attachEditButton(messageDiv, originalContent) {
         editBtn = document.createElement('button');
         editBtn.type = 'button';
         editBtn.className = 'message-action-btn edit-msg-btn';
-        editBtn.textContent = 'Edit';
+        editBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>`;
+        editBtn.title = 'Edit message';
         actions.appendChild(editBtn);
     }
 
@@ -1058,39 +1104,304 @@ function editUserMessage(messageDiv, originalContent) {
 
     if (messageIndex === -1) return;
 
-    // Populate the input with the original message
-    chatInput.value = originalContent;
-    chatInput.focus();
+    // Get the content div
+    const contentDiv = messageDiv.querySelector('.message-content');
+    if (!contentDiv) return;
+
+    // Store original HTML for cancel
+    const originalHTML = contentDiv.innerHTML;
+
+    // Create textarea for editing
+    const textarea = document.createElement('textarea');
+    textarea.className = 'edit-textarea';
+    textarea.value = originalContent;
+    textarea.style.cssText = `
+        width: 100%;
+        min-height: 60px;
+        padding: 8px 12px;
+        border: 1px solid #d9c6a6;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: inherit;
+        resize: vertical;
+        background: #fffdf7;
+        color: #2e2a24;
+    `;
+
+    // Create button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'edit-buttons';
+    buttonContainer.style.cssText = `
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+    `;
+
+    // Create Send button
+    const sendBtn = document.createElement('button');
+    sendBtn.className = 'edit-send-btn';
+    sendBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+    </svg>Send`;
+    sendBtn.style.cssText = `
+        background: #f26532;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+    `;
+
+    // Create Cancel button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `
+        background: #f3e7d6;
+        color: #8a7860;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+    `;
+
+    // Add hover effects
+    sendBtn.onmouseenter = () => {
+        sendBtn.style.transform = 'translateY(-1px)';
+        sendBtn.style.boxShadow = '0 4px 12px rgba(242, 101, 50, 0.3)';
+    };
+    sendBtn.onmouseleave = () => {
+        sendBtn.style.transform = 'translateY(0)';
+        sendBtn.style.boxShadow = 'none';
+    };
+
+    cancelBtn.onmouseenter = () => {
+        cancelBtn.style.background = '#ecdac0';
+    };
+    cancelBtn.onmouseleave = () => {
+        cancelBtn.style.background = '#f3e7d6';
+    };
+
+    // Cancel handler - restore original content
+    cancelBtn.onclick = () => {
+        contentDiv.innerHTML = originalHTML;
+    };
+
+    // Send handler - submit edited message
+    sendBtn.onclick = async () => {
+        const editedContent = textarea.value.trim();
+        if (!editedContent) return;
+
+        // Restore original display
+        contentDiv.innerHTML = originalHTML;
+        contentDiv.textContent = editedContent;
+
+        // Remove all messages from this point onwards (user message + all subsequent messages)
+        const messagesToRemove = allMessages.slice(messageIndex);
+        messagesToRemove.forEach(msg => msg.remove());
+
+        // Update conversation history - remove from this point onwards
+        let historyIndex = 0;
+        for (let i = 0; i < allMessages.length && i < messageIndex; i++) {
+            const msg = allMessages[i];
+            if (msg.classList.contains('message-user') || msg.classList.contains('message-assistant')) {
+                historyIndex++;
+            }
+        }
+
+        // Truncate conversation history
+        if (historyIndex < conversationHistory.length) {
+            conversationHistory = conversationHistory.slice(0, historyIndex);
+        }
+
+        // Send the edited message (sendMessage will add it to chat)
+        chatInput.value = editedContent;
+        await sendMessage();
+        chatInput.value = '';
+    };
+
+    // Replace content with editor
+    contentDiv.innerHTML = '';
+    contentDiv.appendChild(textarea);
+    buttonContainer.appendChild(sendBtn);
+    buttonContainer.appendChild(cancelBtn);
+    contentDiv.appendChild(buttonContainer);
+
+    // Focus textarea and select all
+    textarea.focus();
+    textarea.select();
 
     // Auto-resize textarea
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight + 2, 200) + 'px';
 
-    // Remove all messages from this point onwards (user message + all subsequent messages)
-    const messagesToRemove = allMessages.slice(messageIndex);
-    messagesToRemove.forEach(msg => msg.remove());
+    textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight + 2, 200) + 'px';
+    });
 
-    // Update conversation history - remove from this point onwards
-    // Find the corresponding position in conversation history
-    let historyIndex = 0;
-    for (let i = 0; i < allMessages.length && i < messageIndex; i++) {
-        const msg = allMessages[i];
-        if (msg.classList.contains('message-user') || msg.classList.contains('message-assistant')) {
-            historyIndex++;
+    // Submit on Ctrl/Cmd + Enter
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            sendBtn.click();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelBtn.click();
         }
-    }
-
-    // Truncate conversation history
-    if (historyIndex < conversationHistory.length) {
-        conversationHistory = conversationHistory.slice(0, historyIndex);
-    }
+    });
 }
 
 function downloadMarkdown(markdown) {
     const now = new Date();
-    const timestamp = now.toISOString().replace(/[:.]/g, '-');
-    const filename = `assistant-response-${timestamp}.md`;
+
+    // Create a smart filename from the content
+    const words = markdown
+        .trim()
+        .substring(0, 200) // First 200 chars
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remove special chars
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !['this', 'that', 'with', 'from', 'have', 'about', 'what', 'when', 'where'].includes(w))
+        .slice(0, 4) // Take first 4 meaningful words
+        .join('-');
+
+    // Fallback to date if no good words found
+    const baseFilename = words.length > 5
+        ? words
+        : `document-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const filename = `${baseFilename}.md`;
+
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function downloadHTML(htmlContent) {
+    const now = new Date();
+
+    // Create a smart filename from the content
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+
+    // Get first meaningful words (skip common words)
+    const words = textContent
+        .trim()
+        .substring(0, 200) // First 200 chars
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remove special chars
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !['this', 'that', 'with', 'from', 'have', 'about', 'what', 'when', 'where'].includes(w))
+        .slice(0, 4) // Take first 4 meaningful words
+        .join('-');
+
+    // Fallback to date if no good words found
+    const baseFilename = words.length > 5
+        ? words
+        : `document-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const filename = `${baseFilename}.html`;
+
+    // Create a clean HTML document without headers/footers
+    const fullHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #fdfaf3;
+            color: #2e2a24;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+        h1 { font-size: 2em; }
+        h2 { font-size: 1.5em; }
+        h3 { font-size: 1.25em; }
+        p { margin: 16px 0; }
+        code {
+            background: rgba(0, 0, 0, 0.05);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #f0ebe0;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        blockquote {
+            border-left: 3px solid #f26532;
+            padding-left: 16px;
+            margin: 16px 0;
+            color: #6f614c;
+        }
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 32px;
+        }
+        li { margin: 8px 0; }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+        }
+        th, td {
+            border: 1px solid #e6dcc8;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #f8f4eb;
+            font-weight: 600;
+        }
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        strong { font-weight: 600; }
+        em { font-style: italic; }
+    </style>
+</head>
+<body>
+    ${htmlContent}
+</body>
+</html>`;
+
+    const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1179,6 +1490,21 @@ function removeLoadingIndicator() {
     if (loading) loading.remove();
 }
 
+// Helper function to strip HTML tags from text (preserve token efficiency)
+function stripHtml(html) {
+    // Create a temporary div to parse HTML
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+
+    // Get text content only (strips all HTML tags)
+    let text = tmp.textContent || tmp.innerText || '';
+
+    // Clean up excessive whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+
+    return text;
+}
+
 // Send message with streaming
 async function sendMessage() {
     const message = chatInput.value.trim();
@@ -1222,6 +1548,14 @@ async function sendMessage() {
 
         console.log(`📄 Smart Context: Using segments ${startPage}-${endPage} (${smartContext.pages.length}/${totalPages} segments, ~${estimatedTokens.toLocaleString()} tokens)`);
 
+        // Strip HTML from conversation history to save tokens
+        const cleanedHistory = conversationHistory.map(msg => ({
+            role: msg.role,
+            content: stripHtml(msg.content)
+        }));
+
+        console.log(`💬 Conversation history: ${conversationHistory.length} messages (HTML stripped for API)`);
+
         // Call our local API server with streaming
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -1230,7 +1564,7 @@ async function sendMessage() {
             body: JSON.stringify({
                 message: message,
                 pdfText: contextText,
-                conversationHistory: conversationHistory, // Send conversation history
+                conversationHistory: cleanedHistory, // Send cleaned conversation history (no HTML)
                 contextInfo: {
                     currentPage: currentPage,
                     totalPages: totalPages,
@@ -1762,4 +2096,227 @@ function sendSelectedTextToChat() {
     // Auto-resize textarea
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+}
+
+// ========================================
+// PDF HIGHLIGHTING FUNCTIONALITY
+// ========================================
+
+let pdfHighlights = []; // Store all highlights: {pageNum, rects: [{x, y, width, height}], color}
+const highlightBtn = document.getElementById('highlightBtn');
+const saveHighlightedBtn = document.getElementById('saveHighlightedBtn');
+
+// Add highlight layer to each page during render
+function addHighlightLayer(pageDiv) {
+    if (pageDiv.querySelector('.highlightLayer')) return;
+
+    const highlightLayer = document.createElement('div');
+    highlightLayer.className = 'highlightLayer';
+    pageDiv.appendChild(highlightLayer);
+}
+
+// Render highlights on a page
+function renderHighlightsOnPage(pageNum) {
+    const pageDiv = document.getElementById(`page-${pageNum}`);
+    if (!pageDiv) return;
+
+    const highlightLayer = pageDiv.querySelector('.highlightLayer');
+    if (!highlightLayer) return;
+
+    // Clear existing highlights
+    highlightLayer.innerHTML = '';
+
+    // Get current page dimensions for percentage-to-pixel conversion
+    const pageRect = pageDiv.getBoundingClientRect();
+    const pageWidth = pageDiv.offsetWidth;
+    const pageHeight = pageDiv.offsetHeight;
+
+    // Render all highlights for this page
+    const pageHighlights = pdfHighlights.filter(h => h.pageNum === pageNum);
+    pageHighlights.forEach(highlight => {
+        highlight.rects.forEach(rect => {
+            const highlightDiv = document.createElement('div');
+            highlightDiv.className = `pdf-highlight ${highlight.color || 'highlight-yellow'}`;
+
+            // Convert percentages back to pixels based on current page size
+            highlightDiv.style.left = (rect.x * pageWidth / 100) + 'px';
+            highlightDiv.style.top = (rect.y * pageHeight / 100) + 'px';
+            highlightDiv.style.width = (rect.width * pageWidth / 100) + 'px';
+            highlightDiv.style.height = (rect.height * pageHeight / 100) + 'px';
+
+            // Right-click to remove highlight
+            highlightDiv.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                removeHighlight(highlight);
+            });
+
+            highlightLayer.appendChild(highlightDiv);
+        });
+    });
+}
+
+// Remove a highlight
+function removeHighlight(highlight) {
+    pdfHighlights = pdfHighlights.filter(h => h !== highlight);
+    renderHighlightsOnPage(highlight.pageNum);
+    updateSaveButtonVisibility();
+}
+
+// Create highlight from current selection
+function createHighlightFromSelection() {
+    if (documentType !== DocumentType.PDF) return;
+
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.isCollapsed) return;
+
+    const range = selection.getRangeAt(0);
+    const pageDiv = range.commonAncestorContainer.nodeType === 1
+        ? range.commonAncestorContainer.closest('.pdf-page')
+        : range.commonAncestorContainer.parentElement?.closest('.pdf-page');
+
+    if (!pageDiv) return;
+
+    const pageNum = parseInt(pageDiv.id.replace('page-', ''));
+    const rects = [];
+
+    // Get bounding rectangles for the selection
+    const clientRects = range.getClientRects();
+    const pageRect = pageDiv.getBoundingClientRect();
+    const pageWidth = pageRect.width;
+    const pageHeight = pageRect.height;
+
+    // Store as percentages so they scale with zoom
+    for (let i = 0; i < clientRects.length; i++) {
+        const rect = clientRects[i];
+        const relativeX = rect.left - pageRect.left;
+        const relativeY = rect.top - pageRect.top;
+
+        rects.push({
+            x: (relativeX / pageWidth) * 100,  // Store as percentage
+            y: (relativeY / pageHeight) * 100,
+            width: (rect.width / pageWidth) * 100,
+            height: (rect.height / pageHeight) * 100
+        });
+    }
+
+    if (rects.length > 0) {
+        pdfHighlights.push({
+            pageNum,
+            rects,  // Now stored as percentages
+            color: 'highlight-yellow'
+        });
+
+        renderHighlightsOnPage(pageNum);
+        updateSaveButtonVisibility();
+    }
+
+    // Clear selection
+    selection.removeAllRanges();
+}
+
+// Update save button visibility
+function updateSaveButtonVisibility() {
+    if (saveHighlightedBtn) {
+        saveHighlightedBtn.style.display = pdfHighlights.length > 0 ? 'inline-block' : 'none';
+    }
+}
+
+// Save PDF with highlights
+async function savePDFWithHighlights() {
+    if (!pdfDocument || pdfHighlights.length === 0) return;
+
+    try {
+        // We'll use pdf-lib to add highlights
+        const { PDFDocument, rgb } = window.PDFLib || await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+
+        // Get the original PDF bytes
+        const arrayBuffer = await pdfDocument.getData();
+        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        const pages = pdfDoc.getPages();
+
+        // Add highlights to each page
+        pdfHighlights.forEach(highlight => {
+            const page = pages[highlight.pageNum - 1];
+            if (!page) return;
+
+            const { width: pdfWidth, height: pdfHeight } = page.getSize();
+
+            // Determine color
+            let color = rgb(1, 0.92, 0.23); // yellow
+            if (highlight.color === 'highlight-green') color = rgb(0.3, 0.69, 0.31);
+            if (highlight.color === 'highlight-blue') color = rgb(0.13, 0.59, 0.95);
+            if (highlight.color === 'highlight-pink') color = rgb(0.91, 0.12, 0.39);
+
+            highlight.rects.forEach(rect => {
+                // Convert percentages to PDF coordinates
+                const x = (rect.x / 100) * pdfWidth;
+                const y = (rect.y / 100) * pdfHeight;
+                const width = (rect.width / 100) * pdfWidth;
+                const height = (rect.height / 100) * pdfHeight;
+
+                // PDF coordinates start from bottom-left, we need to convert
+                const pdfY = pdfHeight - y - height;
+
+                page.drawRectangle({
+                    x: x,
+                    y: pdfY,
+                    width: width,
+                    height: height,
+                    color: color,
+                    opacity: 0.4,
+                    borderWidth: 0
+                });
+            });
+        });
+
+        // Save the PDF
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'highlighted_document.pdf';
+        a.click();
+
+        URL.revokeObjectURL(url);
+
+        alert('PDF saved with highlights!');
+    } catch (error) {
+        console.error('Error saving PDF:', error);
+        alert('Error saving PDF with highlights. This feature requires pdf-lib library.');
+    }
+}
+
+// Event listeners for highlighting
+if (highlightBtn) {
+    highlightBtn.addEventListener('click', createHighlightFromSelection);
+
+    // Show/hide highlight button based on text selection
+    document.addEventListener('selectionchange', () => {
+        if (documentType !== DocumentType.PDF) {
+            highlightBtn.style.display = 'none';
+            return;
+        }
+
+        const selection = window.getSelection();
+        const hasSelection = selection && !selection.isCollapsed && selection.toString().trim().length > 0;
+
+        // Check if selection is within PDF
+        if (hasSelection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const container = range.commonAncestorContainer;
+            const isInPDF = container.nodeType === 1
+                ? container.closest('.pdf-page')
+                : container.parentElement?.closest('.pdf-page');
+
+            highlightBtn.style.display = isInPDF ? 'inline-block' : 'none';
+        } else {
+            highlightBtn.style.display = 'none';
+        }
+    });
+}
+
+if (saveHighlightedBtn) {
+    saveHighlightedBtn.addEventListener('click', savePDFWithHighlights);
 }
