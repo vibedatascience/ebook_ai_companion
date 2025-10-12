@@ -562,6 +562,19 @@ body {
     color: #2e2a24;
 }
 
+/* Webpage iframe container */
+.iframe-container {
+    width: 100%;
+    height: 100%;
+    background: white;
+}
+
+.webpage-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
 /* Webpage Rendering Styles */
 .webpage-container {
     background: white;

@@ -748,44 +748,22 @@ async function loadWebpage(title, text, html, url) {
     zoomLevel.textContent = '100%';
 
     if (textContainer) {
-        // Create a styled webpage container
-        const webpageContainer = document.createElement('div');
-        webpageContainer.className = 'webpage-container';
+        // Use iframe to show the actual webpage with full browser experience
+        const iframeContainer = document.createElement('div');
+        iframeContainer.className = 'iframe-container';
 
-        // Add header with title and URL
-        const headerEl = document.createElement('div');
-        headerEl.className = 'webpage-header';
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.className = 'webpage-iframe';
+        iframe.sandbox = 'allow-same-origin allow-scripts allow-popups allow-forms';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
 
-        const titleEl = document.createElement('h1');
-        titleEl.textContent = title;
-
-        const urlEl = document.createElement('a');
-        urlEl.href = url;
-        urlEl.target = '_blank';
-        urlEl.rel = 'noopener noreferrer';
-        urlEl.textContent = url;
-        urlEl.className = 'webpage-url';
-
-        headerEl.appendChild(titleEl);
-        headerEl.appendChild(urlEl);
-
-        // Add rendered HTML content
-        const contentEl = document.createElement('div');
-        contentEl.className = 'webpage-content';
-        contentEl.innerHTML = html;
-
-        // Make all links open in new tab and add safety
-        contentEl.querySelectorAll('a').forEach(link => {
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-        });
-
-        webpageContainer.appendChild(headerEl);
-        webpageContainer.appendChild(contentEl);
+        iframeContainer.appendChild(iframe);
 
         textContainer.innerHTML = '';
-        textContainer.appendChild(webpageContainer);
-        applyTextZoom();
+        textContainer.appendChild(iframeContainer);
         textContainer.scrollTop = 0;
     }
 
