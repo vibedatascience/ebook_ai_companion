@@ -180,6 +180,49 @@ body {
     color: #8a7860;
 }
 
+.upload-subtitle {
+    font-size: 15px;
+    margin-bottom: 30px !important;
+}
+
+.feature-description {
+    max-width: 500px;
+    margin: 0 auto 30px;
+    text-align: left;
+    background: #fdfaf3;
+    border: 1px solid #e6dcc8;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.feature-item:last-child {
+    margin-bottom: 0;
+}
+
+.feature-item svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: #f26532;
+}
+
+.feature-item span {
+    color: #2e2a24;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.feature-item strong {
+    color: #f26532;
+    font-weight: 600;
+}
+
 .btn-primary {
     background: #f26532;
     color: white;
