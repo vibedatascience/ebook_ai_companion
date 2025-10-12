@@ -630,10 +630,17 @@ app.post('/api/url-to-pdf', async (req, res) => {
   try {
     console.log(`🌐 Launching browser and navigating to: ${url}`);
 
-    // Launch headless browser
+    // Launch headless browser with Render-compatible args
     browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920x1080'
+      ]
     });
 
     const page = await browser.newPage();
