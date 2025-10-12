@@ -562,6 +562,143 @@ body {
     color: #2e2a24;
 }
 
+/* Webpage Rendering Styles */
+.webpage-container {
+    background: white;
+    margin: 0 auto;
+    max-width: 900px;
+    box-shadow: 0 4px 12px rgba(45, 35, 20, 0.08);
+    border-radius: 4px;
+}
+
+.webpage-header {
+    padding: 30px 40px;
+    border-bottom: 2px solid #f6f2e8;
+    background: #fdfaf3;
+    border-radius: 4px 4px 0 0;
+}
+
+.webpage-header h1 {
+    margin: 0 0 12px 0;
+    color: #2e2a24;
+    font-size: 28px;
+    line-height: 1.3;
+}
+
+.webpage-url {
+    display: inline-block;
+    color: #f26532;
+    text-decoration: none;
+    font-size: 14px;
+    transition: opacity 0.2s;
+}
+
+.webpage-url:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+
+.webpage-content {
+    padding: 40px;
+    color: #2e2a24;
+    line-height: 1.7;
+    font-size: 16px;
+}
+
+.webpage-content h1,
+.webpage-content h2,
+.webpage-content h3,
+.webpage-content h4 {
+    margin: 24px 0 16px 0;
+    color: #2e2a24;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.webpage-content h1 { font-size: 32px; }
+.webpage-content h2 { font-size: 26px; }
+.webpage-content h3 { font-size: 22px; }
+.webpage-content h4 { font-size: 18px; }
+
+.webpage-content p {
+    margin: 0 0 16px 0;
+}
+
+.webpage-content ul,
+.webpage-content ol {
+    margin: 0 0 16px 0;
+    padding-left: 30px;
+}
+
+.webpage-content li {
+    margin-bottom: 8px;
+}
+
+.webpage-content a {
+    color: #f26532;
+    text-decoration: none;
+}
+
+.webpage-content a:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+
+.webpage-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 16px 0;
+}
+
+.webpage-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+}
+
+.webpage-content table th,
+.webpage-content table td {
+    border: 1px solid #e6dcc8;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.webpage-content table th {
+    background: #f6f2e8;
+    font-weight: 600;
+}
+
+.webpage-content blockquote {
+    margin: 16px 0;
+    padding: 12px 20px;
+    border-left: 4px solid #f26532;
+    background: #fdfaf3;
+}
+
+.webpage-content code {
+    background: #f6f2e8;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.webpage-content pre {
+    background: #2e2a24;
+    color: #f6f2e8;
+    padding: 16px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 16px 0;
+}
+
+.webpage-content pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+}
+
 .text-container::-webkit-scrollbar {
     width: 10px;
 }

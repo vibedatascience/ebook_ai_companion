@@ -624,29 +624,40 @@ app.post('/api/fetch-url', async (req, res) => {
     const html = await response.text();
     console.log(`📄 Fetched ${html.length} characters of HTML`);
 
-    // Simple HTML to text conversion (removes scripts, styles, and tags)
-    let text = html
+    // Clean HTML for display (remove scripts, styles, nav, footer but keep content structure)
+    let cleanedHtml = html
       // Remove script and style tags with their content
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      // Remove noscript tags
+      .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+      // Remove common navigation/UI elements
+      .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
+      .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
+      .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
+      .replace(/<aside\b[^<]*(?:(?!<\/aside>)<[^<]*)*<\/aside>/gi, '')
       // Remove HTML comments
       .replace(/<!--[\s\S]*?-->/g, '')
-      // Replace common block elements with newlines
-      .replace(/<\/(div|p|br|h[1-6]|li|tr|section|article|header|footer)>/gi, '\n')
-      // Remove all remaining HTML tags
-      .replace(/<[^>]+>/g, '')
-      // Decode HTML entities
+      // Remove form elements (search boxes, login forms, etc)
+      .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '')
+      // Remove common class-based UI elements
+      .replace(/<div[^>]*class="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+      .replace(/<div[^>]*id="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '');
+
+    // Extract text for LLM context (plain text version)
+    let text = cleanedHtml
+      .replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-      // Clean up whitespace
+      .replace(/\s+/g, ' ')
       .replace(/\n\s*\n/g, '\n\n')
       .trim();
 
-    console.log(`✅ Extracted ${text.length} characters of text`);
+    console.log(`✅ Cleaned HTML: ${cleanedHtml.length} chars, Text: ${text.length} chars`);
 
     // Get page title from HTML
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -656,7 +667,8 @@ app.post('/api/fetch-url', async (req, res) => {
       success: true,
       url: url,
       title: title,
-      text: text,
+      html: cleanedHtml,  // Send cleaned HTML for display
+      text: text,         // Send plain text for LLM
       length: text.length
     });
 

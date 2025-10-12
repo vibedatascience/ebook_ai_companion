@@ -690,8 +690,8 @@ async function handleUrlLoad() {
         const data = await response.json();
         updateProgress('Loading content...', 80);
 
-        // Load the webpage content as a text document
-        await loadWebpage(data.title, data.text, url);
+        // Load the webpage content as a document (with HTML for display, text for LLM)
+        await loadWebpage(data.title, data.text, data.html, url);
 
         updateProgress('Complete!', 100);
         hideProgress();
@@ -720,7 +720,7 @@ async function handleUrlLoad() {
 }
 
 // Load webpage content as a document
-async function loadWebpage(title, text, url) {
+async function loadWebpage(title, text, html, url) {
     documentType = DocumentType.TEXT;
     pdfDocument = null;
     epubBook = null;
@@ -740,6 +740,7 @@ async function loadWebpage(title, text, url) {
     }
     pdfViewer.classList.remove('is-epub');
 
+    // Store text for LLM context
     pdfText = text;
     pdfPageTexts = { 1: text };
     currentPage = 1;
@@ -747,32 +748,43 @@ async function loadWebpage(title, text, url) {
     zoomLevel.textContent = '100%';
 
     if (textContainer) {
-        // Create a page with title and content
-        const textPage = document.createElement('div');
-        textPage.className = 'text-page';
+        // Create a styled webpage container
+        const webpageContainer = document.createElement('div');
+        webpageContainer.className = 'webpage-container';
+
+        // Add header with title and URL
+        const headerEl = document.createElement('div');
+        headerEl.className = 'webpage-header';
 
         const titleEl = document.createElement('h1');
-        titleEl.style.marginBottom = '20px';
-        titleEl.style.color = '#2e2a24';
         titleEl.textContent = title;
 
-        const urlEl = document.createElement('div');
-        urlEl.style.marginBottom = '20px';
-        urlEl.style.color = '#8a7860';
-        urlEl.style.fontSize = '14px';
-        urlEl.innerHTML = `<a href="${url}" target="_blank" style="color: #f26532;">${url}</a>`;
+        const urlEl = document.createElement('a');
+        urlEl.href = url;
+        urlEl.target = '_blank';
+        urlEl.rel = 'noopener noreferrer';
+        urlEl.textContent = url;
+        urlEl.className = 'webpage-url';
 
-        const contentEl = document.createElement('pre');
-        contentEl.style.whiteSpace = 'pre-wrap';
-        contentEl.style.fontFamily = 'inherit';
-        contentEl.textContent = text;
+        headerEl.appendChild(titleEl);
+        headerEl.appendChild(urlEl);
 
-        textPage.appendChild(titleEl);
-        textPage.appendChild(urlEl);
-        textPage.appendChild(contentEl);
+        // Add rendered HTML content
+        const contentEl = document.createElement('div');
+        contentEl.className = 'webpage-content';
+        contentEl.innerHTML = html;
+
+        // Make all links open in new tab and add safety
+        contentEl.querySelectorAll('a').forEach(link => {
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        });
+
+        webpageContainer.appendChild(headerEl);
+        webpageContainer.appendChild(contentEl);
 
         textContainer.innerHTML = '';
-        textContainer.appendChild(textPage);
+        textContainer.appendChild(webpageContainer);
         applyTextZoom();
         textContainer.scrollTop = 0;
     }
