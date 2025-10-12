@@ -16,19 +16,8 @@ if (!ANTHROPIC_API_KEY) {
   console.warn('⚠️ ANTHROPIC_API_KEY is not set. The server will expect each request to supply an API key header.');
 }
 
-// Middleware - Configure CORS to allow GitHub Pages
-app.use(cors({
-  origin: [
-    'https://vibedatascience.github.io',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-    'null' // Allow file:// protocol for local testing
-  ],
-  credentials: true,
-  exposedHeaders: ['Content-Type'],
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-api-key']
-}));
+// Middleware
+app.use(cors({ exposedHeaders: ['Content-Type'] }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
 
