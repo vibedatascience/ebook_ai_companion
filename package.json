@@ -4,7 +4,8 @@
   "description": "A minimal version of pdf.ai - chat with your PDF documents using Claude AI",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo 'Build complete'"
   },
   "keywords": [
     "pdf",
@@ -15,7 +16,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "puppeteer": "^24.24.0"
   }
 }
