@@ -548,6 +548,12 @@ body {
     gap: 10px;
 }
 
+.page-label {
+    font-size: 13px;
+    color: #8a7860;
+    font-weight: 500;
+}
+
 .btn-icon {
     background: #fcf6eb;
     border: 1px solid #ded3be;

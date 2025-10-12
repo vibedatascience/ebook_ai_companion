@@ -58,6 +58,7 @@ const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 const pageInput = document.getElementById('pageInput');
 const pageTotal = document.getElementById('pageTotal');
+const pageLabel = document.getElementById('pageLabel');
 const zoomInBtn = document.getElementById('zoomIn');
 const zoomOutBtn = document.getElementById('zoomOut');
 const fitWidthBtn = document.getElementById('fitWidth');
@@ -343,6 +344,7 @@ async function loadPDF(file) {
     pageTotal.textContent = `/ ${pdfDocument.numPages}`;
     pageInput.max = pdfDocument.numPages;
     pageInput.value = currentPage;
+    if (pageLabel) pageLabel.textContent = 'Page';
 
     updateProgress(`Extracting text from ${pdfDocument.numPages} pages...`, 30);
     // Extract all text from PDF
@@ -394,13 +396,11 @@ async function loadEPUB(file) {
 
     console.log(`Loading EPUB with ${epubSpineItems.length} chapters...`);
 
-    // Split chapters into pages based on word count (~300 words per page)
-    const WORDS_PER_PAGE = 300;
-    let pageNumber = 1;
-
-    // Extract and render each chapter, splitting into pages by word count
+    // Render each chapter as a single page (no splitting)
     for (let i = 0; i < epubSpineItems.length; i++) {
         const item = epubSpineItems[i];
+        const chapterNumber = i + 1;
+
         try {
             // Load the chapter content
             const doc = await epubBook.load(item.href);
@@ -408,108 +408,79 @@ async function loadEPUB(file) {
             // Extract text for AI context
             const textContent = doc?.textContent || doc?.body?.textContent || '';
             const cleanText = textContent.replace(/\s+/g, ' ').trim();
+            pdfPageTexts[chapterNumber] = cleanText || '[No textual content]';
 
             // Extract HTML for visual rendering
             const htmlContent = doc?.innerHTML || doc?.body?.innerHTML || '';
 
-            // Split text into words
-            const words = cleanText.split(/\s+/).filter(w => w.length > 0);
-            const totalWords = words.length;
+            // Create a chapter page
+            const chapterDiv = document.createElement('div');
+            chapterDiv.className = 'epub-page';
+            chapterDiv.id = `page-${chapterNumber}`;
+            chapterDiv.setAttribute('data-page', chapterNumber);
 
-            // Calculate how many pages this chapter needs
-            const pagesInChapter = Math.max(1, Math.ceil(totalWords / WORDS_PER_PAGE));
+            // Create chapter content wrapper with full HTML
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'epub-content';
+            contentDiv.innerHTML = htmlContent;
 
-            // Create pages for this chapter
-            for (let p = 0; p < pagesInChapter; p++) {
-                const startWord = p * WORDS_PER_PAGE;
-                const endWord = Math.min((p + 1) * WORDS_PER_PAGE, totalWords);
-                const pageText = words.slice(startWord, endWord).join(' ');
+            chapterDiv.appendChild(contentDiv);
+            pdfContainer.appendChild(chapterDiv);
 
-                // Store text for AI context
-                pdfPageTexts[pageNumber] = pageText || '[No textual content]';
-
-                // Create a page div
-                const chapterDiv = document.createElement('div');
-                chapterDiv.className = 'epub-page';
-                chapterDiv.id = `page-${pageNumber}`;
-                chapterDiv.setAttribute('data-page', pageNumber);
-
-                // Create chapter content wrapper
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'epub-content';
-
-                if (p === 0) {
-                    // First page of chapter - show full HTML with links
-                    contentDiv.innerHTML = htmlContent;
-
-                    chapterDiv.appendChild(contentDiv);
-                    pdfContainer.appendChild(chapterDiv);
-
-                    // Fix image sources - convert relative paths to absolute URLs from EPUB
-                    const images = contentDiv.querySelectorAll('img');
-                    for (const img of images) {
-                        const src = img.getAttribute('src');
-                        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-                            try {
-                                // Resolve the image path relative to the chapter
-                                const imgPath = new URL(src, item.href).href;
-                                // Load image from EPUB and convert to data URL
-                                epubBook.archive.getAsset(imgPath).then(blob => {
-                                    if (blob) {
-                                        const reader = new FileReader();
-                                        reader.onload = (e) => {
-                                            img.src = e.target.result;
-                                        };
-                                        reader.readAsDataURL(blob);
-                                    }
-                                }).catch(err => {
-                                    console.warn('Failed to load image:', imgPath, err);
-                                });
-                            } catch (err) {
-                                console.warn('Failed to resolve image path:', src, err);
+            // Fix image sources - convert relative paths to base64 data URLs
+            const images = contentDiv.querySelectorAll('img');
+            for (const img of images) {
+                const src = img.getAttribute('src');
+                if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+                    try {
+                        // Resolve the image path relative to the chapter
+                        const imgPath = new URL(src, item.href).href;
+                        // Load image from EPUB and convert to data URL
+                        epubBook.archive.getAsset(imgPath).then(blob => {
+                            if (blob) {
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                    img.src = e.target.result;
+                                };
+                                reader.readAsDataURL(blob);
                             }
-                        }
+                        }).catch(err => {
+                            console.warn('Failed to load image:', imgPath, err);
+                        });
+                    } catch (err) {
+                        console.warn('Failed to resolve image path:', src, err);
                     }
-
-                    // Store chapter href mapping to first page
-                    if (item && item.href) {
-                        epubHrefToIndex[item.href] = pageNumber;
-                    }
-
-                    // Make internal links clickable (only for first page with HTML)
-                    makeLinksClickable(contentDiv, pageNumber);
-                } else {
-                    // Subsequent pages - show text content with basic formatting (no links)
-                    contentDiv.innerHTML = `<div style="padding: 40px; line-height: 1.8; font-size: 16px;">${pageText.replace(/\n/g, '<br>')}</div>`;
-
-                    chapterDiv.appendChild(contentDiv);
-                    pdfContainer.appendChild(chapterDiv);
                 }
-
-                pageNumber++;
             }
+
+            // Store chapter href mapping
+            if (item && item.href) {
+                epubHrefToIndex[item.href] = chapterNumber;
+            }
+
+            // Make internal links clickable
+            makeLinksClickable(contentDiv, chapterNumber);
+
         } catch (err) {
             console.warn('Failed to load chapter', item?.href, err);
-            pdfPageTexts[pageNumber] = '[Failed to load chapter content]';
+            pdfPageTexts[chapterNumber] = '[Failed to load chapter content]';
 
             // Still create a placeholder page
             const chapterDiv = document.createElement('div');
             chapterDiv.className = 'epub-page';
-            chapterDiv.id = `page-${pageNumber}`;
+            chapterDiv.id = `page-${chapterNumber}`;
             chapterDiv.innerHTML = '<div class="epub-content"><p>Failed to load chapter content</p></div>';
             pdfContainer.appendChild(chapterDiv);
-
-            pageNumber++;
         }
     }
 
-    const totalPages = pageNumber - 1;
+    const totalPages = epubSpineItems.length;
 
     // Build full text payload for AI
     pdfText = Object.keys(pdfPageTexts)
         .map((key) => {
             const idx = parseInt(key, 10);
-            return `\n\n--- Page ${idx} ---\n${pdfPageTexts[key]}`;
+            return `\n\n--- Chapter ${idx} ---\n${pdfPageTexts[key]}`;
         })
         .join('');
 
@@ -517,8 +488,9 @@ async function loadEPUB(file) {
     pageInput.value = currentPage;
     pageInput.max = totalPages;
     pageTotal.textContent = `/ ${totalPages}`;
+    if (pageLabel) pageLabel.textContent = 'Chapter';
 
-    console.log(`EPUB loaded: ${epubSpineItems.length} chapters split into ${totalPages} pages (${WORDS_PER_PAGE} words/page)`);
+    console.log(`EPUB loaded: ${totalPages} chapters rendered`);
 
     updatePageInfo();
 
@@ -720,6 +692,7 @@ async function loadText(file) {
     pageInput.value = 1;
     pageInput.max = 1;
     pageTotal.textContent = '/ 1';
+    if (pageLabel) pageLabel.textContent = 'Section';
 
     updatePageInfo();
 }
