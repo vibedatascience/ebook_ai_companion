@@ -394,7 +394,11 @@ async function loadEPUB(file) {
 
     console.log(`Loading EPUB with ${epubSpineItems.length} chapters...`);
 
-    // Extract and render each chapter as an HTML page
+    // Split chapters into pages based on word count (~300 words per page)
+    const WORDS_PER_PAGE = 300;
+    let pageNumber = 1;
+
+    // Extract and render each chapter, splitting into pages by word count
     for (let i = 0; i < epubSpineItems.length; i++) {
         const item = epubSpineItems[i];
         try {
@@ -404,58 +408,87 @@ async function loadEPUB(file) {
             // Extract text for AI context
             const textContent = doc?.textContent || doc?.body?.textContent || '';
             const cleanText = textContent.replace(/\s+/g, ' ').trim();
-            pdfPageTexts[i + 1] = cleanText || '[No textual content]';
 
             // Extract HTML for visual rendering
             const htmlContent = doc?.innerHTML || doc?.body?.innerHTML || '';
 
-            // Create a chapter page (similar to PDF pages)
-            const chapterDiv = document.createElement('div');
-            chapterDiv.className = 'epub-page';
-            chapterDiv.id = `page-${i + 1}`;
-            chapterDiv.setAttribute('data-page', i + 1);
+            // Split text into words
+            const words = cleanText.split(/\s+/).filter(w => w.length > 0);
+            const totalWords = words.length;
 
-            // Create chapter content wrapper
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'epub-content';
-            contentDiv.innerHTML = htmlContent;
+            // Calculate how many pages this chapter needs
+            const pagesInChapter = Math.max(1, Math.ceil(totalWords / WORDS_PER_PAGE));
 
-            chapterDiv.appendChild(contentDiv);
-            pdfContainer.appendChild(chapterDiv);
+            // Create pages for this chapter
+            for (let p = 0; p < pagesInChapter; p++) {
+                const startWord = p * WORDS_PER_PAGE;
+                const endWord = Math.min((p + 1) * WORDS_PER_PAGE, totalWords);
+                const pageText = words.slice(startWord, endWord).join(' ');
 
-            if (item && item.href) {
-                epubHrefToIndex[item.href] = i;
+                // Store text for AI context
+                pdfPageTexts[pageNumber] = pageText || '[No textual content]';
+
+                // Create a page div
+                const chapterDiv = document.createElement('div');
+                chapterDiv.className = 'epub-page';
+                chapterDiv.id = `page-${pageNumber}`;
+                chapterDiv.setAttribute('data-page', pageNumber);
+
+                // Create chapter content wrapper
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'epub-content';
+
+                if (p === 0) {
+                    // First page of chapter - show full HTML
+                    contentDiv.innerHTML = htmlContent;
+                } else {
+                    // Subsequent pages - show text content with basic formatting
+                    contentDiv.innerHTML = `<div style="padding: 40px; line-height: 1.8; font-size: 16px;">${pageText.replace(/\n/g, '<br>')}</div>`;
+                }
+
+                chapterDiv.appendChild(contentDiv);
+                pdfContainer.appendChild(chapterDiv);
+
+                if (item && item.href && p === 0) {
+                    epubHrefToIndex[item.href] = pageNumber;
+                }
+
+                // Make internal links clickable
+                makeLinksClickable(contentDiv, pageNumber);
+
+                pageNumber++;
             }
-
-            // Make internal links clickable
-            makeLinksClickable(contentDiv, i + 1);
         } catch (err) {
             console.warn('Failed to load chapter', item?.href, err);
-            pdfPageTexts[i + 1] = '[Failed to load chapter content]';
+            pdfPageTexts[pageNumber] = '[Failed to load chapter content]';
 
             // Still create a placeholder page
             const chapterDiv = document.createElement('div');
             chapterDiv.className = 'epub-page';
-            chapterDiv.id = `page-${i + 1}`;
+            chapterDiv.id = `page-${pageNumber}`;
             chapterDiv.innerHTML = '<div class="epub-content"><p>Failed to load chapter content</p></div>';
             pdfContainer.appendChild(chapterDiv);
+
+            pageNumber++;
         }
     }
+
+    const totalPages = pageNumber - 1;
 
     // Build full text payload for AI
     pdfText = Object.keys(pdfPageTexts)
         .map((key) => {
             const idx = parseInt(key, 10);
-            return `\n\n--- Chapter ${idx} ---\n${pdfPageTexts[key]}`;
+            return `\n\n--- Page ${idx} ---\n${pdfPageTexts[key]}`;
         })
         .join('');
 
     currentPage = 1;
     pageInput.value = currentPage;
-    pageInput.max = epubSpineItems.length || 1;
-    pageTotal.textContent = `/ ${epubSpineItems.length || 1}`;
+    pageInput.max = totalPages;
+    pageTotal.textContent = `/ ${totalPages}`;
 
-    console.log(`EPUB loaded: ${epubSpineItems.length} chapters rendered`);
+    console.log(`EPUB loaded: ${epubSpineItems.length} chapters split into ${totalPages} pages (${WORDS_PER_PAGE} words/page)`);
 
     updatePageInfo();
 
