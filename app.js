@@ -445,6 +445,32 @@ async function loadEPUB(file) {
                     chapterDiv.appendChild(contentDiv);
                     pdfContainer.appendChild(chapterDiv);
 
+                    // Fix image sources - convert relative paths to absolute URLs from EPUB
+                    const images = contentDiv.querySelectorAll('img');
+                    for (const img of images) {
+                        const src = img.getAttribute('src');
+                        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+                            try {
+                                // Resolve the image path relative to the chapter
+                                const imgPath = new URL(src, item.href).href;
+                                // Load image from EPUB and convert to data URL
+                                epubBook.archive.getAsset(imgPath).then(blob => {
+                                    if (blob) {
+                                        const reader = new FileReader();
+                                        reader.onload = (e) => {
+                                            img.src = e.target.result;
+                                        };
+                                        reader.readAsDataURL(blob);
+                                    }
+                                }).catch(err => {
+                                    console.warn('Failed to load image:', imgPath, err);
+                                });
+                            } catch (err) {
+                                console.warn('Failed to resolve image path:', src, err);
+                            }
+                        }
+                    }
+
                     // Store chapter href mapping to first page
                     if (item && item.href) {
                         epubHrefToIndex[item.href] = pageNumber;
