@@ -275,8 +275,16 @@ async function handleFileSelect(event) {
     const isEpub = mimeType === 'application/epub+zip' || extension === 'epub';
     const isText = mimeType === 'text/plain' || extension === 'txt';
 
-    if (!isPdf && !isEpub && !isText) {
-        alert('Please select a valid PDF, EPUB, or TXT file');
+    // EPUB support disabled due to pagination complexity
+    if (isEpub) {
+        alert('⚠️ EPUB files are not supported at this time.\n\nPlease convert your EPUB to PDF first, or use a PDF/TXT file instead.\n\nRecommended: Use Calibre (free) to convert EPUB → PDF');
+        fileInput.value = ''; // Reset file input
+        return;
+    }
+
+    if (!isPdf && !isText) {
+        alert('Please select a valid PDF or TXT file');
+        fileInput.value = ''; // Reset file input
         return;
     }
 
@@ -285,8 +293,6 @@ async function handleFileSelect(event) {
 
         if (isPdf) {
             await loadPDF(file);
-        } else if (isEpub) {
-            await loadEPUB(file);
         } else if (isText) {
             await loadText(file);
         }
