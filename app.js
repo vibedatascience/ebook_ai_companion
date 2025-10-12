@@ -670,18 +670,102 @@ async function loadText(file) {
     pdfViewer.classList.remove('is-epub');
 
     const text = await file.text();
+    const totalTokens = estimateTokens(text);
+    const CHUNK_TOKEN_LIMIT = 100000; // Target 100K tokens per chunk (safely under 150K max)
 
     pdfText = text;
-    pdfPageTexts = { 1: text };
+
+    // If text is small enough, keep as single section
+    if (totalTokens <= CHUNK_TOKEN_LIMIT) {
+        pdfPageTexts = { 1: text };
+        currentPage = 1;
+        textZoom = 1;
+        zoomLevel.textContent = '100%';
+
+        if (textContainer) {
+            const textPage = document.createElement('div');
+            textPage.className = 'text-page';
+            textPage.textContent = text;
+
+            textContainer.innerHTML = '';
+            textContainer.appendChild(textPage);
+            applyTextZoom();
+            textContainer.scrollTop = 0;
+        }
+
+        pageInput.value = 1;
+        pageInput.max = 1;
+        pageTotal.textContent = '/ 1';
+        if (pageLabel) pageLabel.textContent = 'Section';
+
+        updatePageInfo();
+        return;
+    }
+
+    // Large file - chunk it into sections
+    console.log(`📚 Large text file detected: ${totalTokens.toLocaleString()} tokens, splitting into sections...`);
+
+    const chunks = [];
+    let remainingText = text;
+
+    while (remainingText.length > 0) {
+        const targetChars = CHUNK_TOKEN_LIMIT * 3; // Rough character estimate
+
+        if (estimateTokens(remainingText) <= CHUNK_TOKEN_LIMIT) {
+            // Last chunk - add remaining text
+            chunks.push(remainingText);
+            break;
+        }
+
+        // Find good split point near target
+        let splitIndex = targetChars;
+
+        // Try splitting on double newline (paragraph boundary)
+        let searchStart = Math.max(0, targetChars - 10000);
+        let searchEnd = Math.min(remainingText.length, targetChars + 10000);
+        let paragraphBreak = remainingText.lastIndexOf('\n\n', searchEnd);
+
+        if (paragraphBreak > searchStart) {
+            splitIndex = paragraphBreak + 2; // Include the newlines
+        } else {
+            // Try single newline
+            let lineBreak = remainingText.lastIndexOf('\n', searchEnd);
+            if (lineBreak > searchStart) {
+                splitIndex = lineBreak + 1;
+            } else {
+                // Last resort: split on space
+                let spaceBreak = remainingText.lastIndexOf(' ', searchEnd);
+                if (spaceBreak > searchStart) {
+                    splitIndex = spaceBreak + 1;
+                } else {
+                    // Force split at target
+                    splitIndex = targetChars;
+                }
+            }
+        }
+
+        const chunk = remainingText.slice(0, splitIndex).trim();
+        chunks.push(chunk);
+        remainingText = remainingText.slice(splitIndex).trim();
+    }
+
+    console.log(`✂️ Split into ${chunks.length} sections`);
+
+    // Store chunks as numbered pages
+    pdfPageTexts = {};
+    chunks.forEach((chunk, index) => {
+        pdfPageTexts[index + 1] = chunk;
+    });
+
+    // Render first section
     currentPage = 1;
     textZoom = 1;
     zoomLevel.textContent = '100%';
 
     if (textContainer) {
-        // Create a white page wrapper similar to PDF pages
         const textPage = document.createElement('div');
         textPage.className = 'text-page';
-        textPage.textContent = text;
+        textPage.textContent = chunks[0];
 
         textContainer.innerHTML = '';
         textContainer.appendChild(textPage);
@@ -690,8 +774,8 @@ async function loadText(file) {
     }
 
     pageInput.value = 1;
-    pageInput.max = 1;
-    pageTotal.textContent = '/ 1';
+    pageInput.max = chunks.length;
+    pageTotal.textContent = `/ ${chunks.length}`;
     if (pageLabel) pageLabel.textContent = 'Section';
 
     updatePageInfo();
@@ -1062,7 +1146,18 @@ function goToPage(pageNum) {
             epubRendition.display(spineItem.href || spineItem);
         }
     } else if (documentType === DocumentType.TEXT && textContainer) {
-        textContainer.scrollTop = 0;
+        // Load the selected text chunk
+        const chunkText = pdfPageTexts[pageNum];
+        if (chunkText) {
+            const textPage = document.createElement('div');
+            textPage.className = 'text-page';
+            textPage.textContent = chunkText;
+
+            textContainer.innerHTML = '';
+            textContainer.appendChild(textPage);
+            applyTextZoom();
+            textContainer.scrollTop = 0;
+        }
     }
 
     updatePageInfo();
