@@ -627,16 +627,26 @@ app.post('/api/fetch-url', async (req, res) => {
     // Try to extract main content from common patterns (Wikipedia, articles, etc.)
     let mainContent = html;
 
-    // For Wikipedia - extract the main content div
-    const wikiContentMatch = html.match(/<div[^>]*class="[^"]*mw-parser-output[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/i);
-    if (wikiContentMatch) {
-      mainContent = wikiContentMatch[1];
-      console.log('📰 Extracted Wikipedia main content');
+    // For Wikipedia - extract the main parser output content
+    // Look for the div with class "mw-parser-output" which contains the article
+    const wikiStart = html.indexOf('class="mw-parser-output"');
+    if (wikiStart !== -1) {
+      // Find the opening tag
+      const openTag = html.lastIndexOf('<div', wikiStart);
+      if (openTag !== -1) {
+        // Find where this content section likely ends (before footer/related content)
+        let endPos = html.indexOf('<div class="printfooter"', openTag);
+        if (endPos === -1) endPos = html.indexOf('id="catlinks"', openTag);
+        if (endPos === -1) endPos = html.indexOf('class="navbox"', openTag);
+        if (endPos === -1) endPos = html.length;
+
+        mainContent = html.substring(openTag, endPos);
+        console.log(`📰 Extracted Wikipedia main content (${mainContent.length} chars)`);
+      }
     } else {
       // Try other common content patterns
       const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
       const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-      const contentMatch = html.match(/<div[^>]*(?:class|id)="[^"]*(?:content|article|post|entry)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
 
       if (articleMatch) {
         mainContent = articleMatch[1];
@@ -644,9 +654,6 @@ app.post('/api/fetch-url', async (req, res) => {
       } else if (mainMatch) {
         mainContent = mainMatch[1];
         console.log('📰 Extracted main content');
-      } else if (contentMatch) {
-        mainContent = contentMatch[1];
-        console.log('📰 Extracted div content');
       }
     }
 
