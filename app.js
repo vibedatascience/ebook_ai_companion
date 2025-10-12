@@ -439,22 +439,26 @@ async function loadEPUB(file) {
                 contentDiv.className = 'epub-content';
 
                 if (p === 0) {
-                    // First page of chapter - show full HTML
+                    // First page of chapter - show full HTML with links
                     contentDiv.innerHTML = htmlContent;
+
+                    chapterDiv.appendChild(contentDiv);
+                    pdfContainer.appendChild(chapterDiv);
+
+                    // Store chapter href mapping to first page
+                    if (item && item.href) {
+                        epubHrefToIndex[item.href] = pageNumber;
+                    }
+
+                    // Make internal links clickable (only for first page with HTML)
+                    makeLinksClickable(contentDiv, pageNumber);
                 } else {
-                    // Subsequent pages - show text content with basic formatting
+                    // Subsequent pages - show text content with basic formatting (no links)
                     contentDiv.innerHTML = `<div style="padding: 40px; line-height: 1.8; font-size: 16px;">${pageText.replace(/\n/g, '<br>')}</div>`;
+
+                    chapterDiv.appendChild(contentDiv);
+                    pdfContainer.appendChild(chapterDiv);
                 }
-
-                chapterDiv.appendChild(contentDiv);
-                pdfContainer.appendChild(chapterDiv);
-
-                if (item && item.href && p === 0) {
-                    epubHrefToIndex[item.href] = pageNumber;
-                }
-
-                // Make internal links clickable
-                makeLinksClickable(contentDiv, pageNumber);
 
                 pageNumber++;
             }
@@ -2405,15 +2409,15 @@ function makeLinksClickable(container, currentChapter) {
                 // Try to find the chapter by matching href
                 let targetChapterIndex = -1;
 
-                for (const [chapterHref, index] of Object.entries(epubHrefToIndex)) {
+                for (const [chapterHref, pageNum] of Object.entries(epubHrefToIndex)) {
                     if (chapterHref.includes(chapterPath) || chapterPath.includes(chapterHref)) {
-                        targetChapterIndex = index;
+                        targetChapterIndex = pageNum; // This is now the actual page number, not chapter index
                         break;
                     }
                 }
 
                 if (targetChapterIndex >= 0) {
-                    const targetPage = targetChapterIndex + 1;
+                    const targetPage = targetChapterIndex; // Already the correct page number
                     goToPage(targetPage);
 
                     // If there's an anchor, scroll to it after navigation
