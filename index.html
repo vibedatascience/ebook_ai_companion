@@ -61,9 +61,16 @@
                     <div class="url-divider">
                         <span>OR</span>
                     </div>
-                    <div class="url-input-container">
-                        <input type="url" id="urlInput" placeholder="Enter URL (e.g., https://en.wikipedia.org/wiki/...)">
-                        <button id="loadUrlBtn" class="btn-secondary">Load URL</button>
+                    <div class="url-section">
+                        <div class="url-header">
+                            <span>Load from Web</span>
+                            <span class="beta-badge">BETA</span>
+                        </div>
+                        <p class="url-note">Works best with Wikipedia. Other sites may have limited support.</p>
+                        <div class="url-input-container">
+                            <input type="url" id="urlInput" placeholder="Enter Wikipedia URL (e.g., https://en.wikipedia.org/wiki/...)">
+                            <button id="loadUrlBtn" class="btn-secondary">Load URL</button>
+                        </div>
                     </div>
                     <!-- Progress bar for file loading -->
                     <div id="loadingProgress" class="loading-progress" style="display: none;">

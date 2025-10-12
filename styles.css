@@ -229,12 +229,44 @@ body {
     background: #f6f2e8;
 }
 
+.url-section {
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.url-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #2e2a24;
+}
+
+.beta-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f26532;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+.url-note {
+    font-size: 13px;
+    color: #8a7860;
+    margin-bottom: 12px;
+    font-style: italic;
+}
+
 .url-input-container {
     display: flex;
     gap: 10px;
     width: 100%;
-    max-width: 500px;
-    margin: 0 auto;
 }
 
 .url-input-container input[type="url"] {
