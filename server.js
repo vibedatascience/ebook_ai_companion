@@ -5,52 +5,89 @@ const path = require('path');
 const app = express();
 const PORT = 3001;
 
+
+
 // API Configuration
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = 'claude-sonnet-4-5-20250929';
 
 if (!ANTHROPIC_API_KEY) {
-    console.warn('⚠️ ANTHROPIC_API_KEY is not set. The server will expect each request to supply an API key header.');
+  console.warn('⚠️ ANTHROPIC_API_KEY is not set. The server will expect each request to supply an API key header.');
 }
 
 // Middleware
-app.use(cors({
-    exposedHeaders: ['Content-Type']
-}));
+app.use(cors({ exposedHeaders: ['Content-Type'] }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname)));
 
+// In-memory session cache for delta updates
+// Keyed by conversationId; stores last included pages and what text was already sent
+const sessions = new Map();
+
+// Helper: make a stable signature for a page list
+function sigFromPages(pages) {
+  return Array.isArray(pages) && pages.length ? pages.slice().sort((a, b) => a - b).join(',') : '';
+}
+
 // API endpoint to chat with Claude
 app.post('/api/chat', async (req, res) => {
-    const { message, pdfText, contextInfo, conversationHistory } = req.body;
+  const {
+    message,
+    pdfText,                    // optional if using pdfPages
+    pdfPages,                   // optional: [{ page: number, text: string }]
+    contextInfo,                // expects { currentPage, totalPages, includedPages: number[] }
+    conversationHistory,        // prior turns (Anthropic role/content objects)
+    conversationId              // required for proper delta caching; fallback to stateless if missing
+  } = req.body;
 
-    console.log('📨 Received chat request:', {
-        message: message.substring(0, 50) + '...',
-        historyLength: conversationHistory ? conversationHistory.length : 0
+  console.log('📨 Received chat request:', {
+    message: message ? message.substring(0, 50) + '...' : '',
+    historyLength: conversationHistory ? conversationHistory.length : 0,
+    conversationId: conversationId || '(no id)'
+  });
+
+  if (!message) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  // Require some form of document content on first turn
+  const isFirstTurn = !(conversationHistory && conversationHistory.length);
+  if (isFirstTurn && !pdfText && !Array.isArray(pdfPages)) {
+    return res.status(400).json({ error: 'PDF text or pdfPages are required on the first turn' });
+  }
+
+  const requestApiKeyHeader = (req.headers['x-api-key'] || '').toString().trim();
+  const effectiveApiKey = requestApiKeyHeader || ANTHROPIC_API_KEY;
+
+  if (!effectiveApiKey) {
+    return res.status(500).json({
+      error: 'Server misconfiguration',
+      details: 'No Anthropic API key provided. Set ANTHROPIC_API_KEY or supply an x-api-key header.'
     });
+  }
 
-    if (!message || !pdfText) {
-        return res.status(400).json({ error: 'Message and PDF text are required' });
-    }
 
-    const requestApiKeyHeader = (req.headers['x-api-key'] || '').toString().trim();
-    const effectiveApiKey = requestApiKeyHeader || ANTHROPIC_API_KEY;
 
-    if (!effectiveApiKey) {
-        return res.status(500).json({
-            error: 'Server misconfiguration',
-            details: 'No Anthropic API key provided. Set ANTHROPIC_API_KEY or supply an x-api-key header.'
-        });
-    }
+  // Build system prompt (static instructions ONLY; no dynamic context here)
+  const systemPrompt = `You are an AI document assistant with advanced visual communication capabilities.
 
-    // Build enhanced system message
-    let systemMessage = `You are an AI document assistant with advanced visual communication capabilities.
+⚠️ **CRITICAL RENDERING RULES - READ CAREFULLY** ⚠️
 
-⚠️ **CRITICAL RENDERING RULES** ⚠️
-1. NEVER output mathematical expressions character-by-character (e.g., "I = 1 T 1 N")
-2. ALWAYS write math as continuous strings: "I = (1/T)(1/N)Σwij"
-3. NEVER output HTML tags character-by-character (e.g., "< / p >")
-4. ALWAYS write complete HTML tags properly: "</p>"
+**STREAMING OUTPUT REQUIREMENTS:**
+When streaming responses, you MUST write HTML and inline styles as complete, unbroken strings:
+
+❌ WRONG (character-by-character):
+"< d i v   s t y l e = " c o l o r : # 7 5 8 D 9 9 " >"
+
+✅ CORRECT (complete tag as one unit):
+"<div style="color: #758D99">"
+
+**RULES:**
+1. Write ALL HTML tags as complete units, not character-by-character
+2. Write ALL inline CSS styles as complete strings, not fragmented
+3. NEVER output mathematical expressions character-by-character (e.g., "I = 1 T 1 N")
+4. ALWAYS write math as continuous strings: "I = (1/T)(1/N)Σwij"
+5. When using HTML color codes, write the entire style attribute at once: style="color: #758D99"
+6. Never split CSS properties across multiple output chunks
 
 ## Step 1: Document Type Detection
 
@@ -90,6 +127,7 @@ Quickly identify the document type and adapt your response style:
 - **For math equations**: Write them in plain text or simple markdown. Example: "I = (1/T) * (1/N) * Σ(wij)" or describe in words
 - **NEVER output math character-by-character** (NO: "I = 1 T 1 N ∑ i = 1")
 - **HTML tags must be complete** - never output broken tags like "</p><p>" character-by-character
+- **Inline CSS must be complete** - write entire style="..." attributes as unbroken strings, never fragment them
 
 ---
 
@@ -304,160 +342,260 @@ If report has lot of data, use charts
 - **For data**: Include sample data, be granular with inputs/outputs
 - **Use all available tokens**: Comprehensive answers are valued`;
 
-    if (contextInfo && contextInfo.includedPages) {
-        const pageRange = contextInfo.includedPages.length > 1
-            ? `pages ${contextInfo.includedPages[0]}-${contextInfo.includedPages[contextInfo.includedPages.length - 1]}`
-            : `page ${contextInfo.includedPages[0]}`;
 
-        systemMessage += `\n\n## Current Context:
+  // Build USER message content with delta logic
+  let userContent = '';
+  const includedPages = contextInfo && Array.isArray(contextInfo.includedPages) ? contextInfo.includedPages : [];
+
+  // Session lookup
+  const sid = conversationId || null;
+  const prior = sid ? sessions.get(sid) : null;
+  const prevSig = prior ? prior.pageSig : '';
+  const currSig = sigFromPages(includedPages);
+
+  // Determine delta vs full send
+  const contextSameAsBefore = !!prior && prevSig === currSig;
+  const havePerPageTexts = Array.isArray(pdfPages) && pdfPages.every(p => typeof p.page === 'number' && typeof p.text === 'string');
+
+  // Compute new pages if we have a prior context
+  let newPages = [];
+  if (prior && includedPages.length) {
+    const prevSet = new Set(prior.includedPages || []);
+    newPages = includedPages.filter(p => !prevSet.has(p));
+  }
+
+  // Log delta optimization status
+  console.log(`🔄 Delta optimization: isFirstTurn=${isFirstTurn}, contextSameAsBefore=${contextSameAsBefore}, havePerPageTexts=${havePerPageTexts}, newPages=${newPages.length}`);
+  if (contextSameAsBefore) {
+    console.log(`✅ Same context detected - sending NO document text (0 tokens saved)`);
+  } else if (!isFirstTurn && newPages.length > 0) {
+    console.log(`📊 Context changed - sending ONLY ${newPages.length} new pages (delta optimization active)`);
+  } else if (isFirstTurn) {
+    console.log(`🆕 First turn - sending full context window (${includedPages.length} pages)`);
+  }
+
+  // Current Context header (always include if contextInfo provided; it's lightweight)
+  if (contextInfo && includedPages.length) {
+    const pageRange =
+      includedPages.length > 1
+        ? `pages ${Math.min(...includedPages)}-${Math.max(...includedPages)}`
+        : `page ${includedPages[0]}`;
+
+    userContent += `## Current Context:
 - **User's Current Page**: ${contextInfo.currentPage} of ${contextInfo.totalPages}
-- **Pages Available to You**: ${pageRange} (${contextInfo.includedPages.length} pages)`;
+- **Pages Available to You**: ${pageRange} (${includedPages.length} pages)
+${includedPages.length < (contextInfo.totalPages || includedPages.length) ? '- **Note**: You have access to a limited page window around the current location.\n' : ''}
+`;
+  }
 
-        // If not all pages are included, let Claude know
-        if (contextInfo.includedPages.length < contextInfo.totalPages) {
-            systemMessage += `
-- **Note**: For a large PDF, you only have access to pages around the user's current location. If the answer requires information from other sections, politely suggest the user navigate to those pages.`;
-        }
+  // Decide what document text to send
+  // 1) First turn: send full current window (pdfPages preferred; else pdfText)
+  // 2) Subsequent turns, same context: send NO document text (question only)
+  // 3) Subsequent turns, context changed:
+  //    - If pdfPages provided, send ONLY new pages
+  //    - Else fallback: send full current window (since we can't isolate deltas)
+  let docBlock = '';
+
+  if (isFirstTurn) {
+    if (havePerPageTexts) {
+      const ordered = pdfPages
+        .filter(x => includedPages.includes(x.page))
+        .sort((a, b) => a.page - b.page)
+        .map(x => `### Page ${x.page}\n${x.text}`)
+        .join('\n\n');
+      docBlock = `## PDF Document Content (initial window):\n\n${ordered}`;
+    } else {
+      docBlock = `## PDF Document Content (initial window):\n\n${pdfText || ''}`;
+    }
+  } else if (!contextSameAsBefore) {
+    if (havePerPageTexts && newPages.length) {
+      const newSet = new Set(newPages);
+      const ordered = pdfPages
+        .filter(x => newSet.has(x.page))
+        .sort((a, b) => a.page - b.page)
+        .map(x => `### Page ${x.page}\n${x.text}`)
+        .join('\n\n');
+
+      if (ordered.trim().length) {
+        docBlock = `## PDF Delta (new pages only): ${newPages.sort((a, b) => a - b).join(', ')}\n\n${ordered}\n\n_Reference: prior pages were provided earlier in this conversation._`;
+      } else if (pdfText) {
+        // Fallback if client didn't send per-page text for these new pages
+        docBlock = `## PDF Document Content (updated window):\n\n${pdfText}`;
+      }
+    } else {
+      // No per-page texts; fallback to sending the updated window blob
+      if (pdfText) {
+        docBlock = `## PDF Document Content (updated window):\n\n${pdfText}`;
+      }
+    }
+  } // else same context: no docBlock
+
+  if (docBlock) {
+    userContent += `\n${docBlock}\n`;
+  }
+
+  // Always add the question last
+  userContent += `\n## User's Question:\n${message}\n\n---\nProvide a clear, well-formatted answer based on the content above.`;
+
+  try {
+    // Build messages
+    function stripDocBlocks(text) {
+  if (!text || typeof text !== 'string') return text;
+  // Remove prior full-window or delta blocks up to the next heading or end
+  return text
+    // Remove "## PDF Document Content ..." sections
+    .replace(/## PDF Document Content[\s\S]*?(?=\n## |\n--|$)/g, '')
+    // Remove "## PDF Delta ..." sections
+    .replace(/## PDF Delta[\s\S]*?(?=\n## |\n--|$)/g, '')
+    // Trim extra whitespace
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const messages = [];
+if (conversationHistory && conversationHistory.length > 0) {
+  for (const m of conversationHistory) {
+    messages.push({
+      role: m.role,
+      content: stripDocBlocks(m.content)
+    });
+  }
+}
+messages.push({ role: 'user', content: userContent }); // userContent already delta-safe
+
+
+    const requestBody = {
+      model: MODEL,
+      max_tokens: 64000,
+      stream: true,
+      system: systemPrompt,
+      messages
+    };
+
+    console.log(
+      '🚀 Sending request to Anthropic API...',
+    );
+
+    // Log compact request (omit large content)
+    const safeLog = {
+      ...requestBody,
+      messages: [
+        ...(messages.length > 1 ? messages.slice(0, -1) : []),
+        { role: 'user', content: '[omitted large content]' }
+      ],
+      system: '[system prompt]'
+    };
+    console.log('📦 Request body (compact):', JSON.stringify(safeLog, null, 2).substring(0, 400) + '...');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': effectiveApiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    console.log('📡 Response received. Status:', response.status);
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    console.log('📋 Response headers:', responseHeaders);
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('API Error:', response.status, errorData);
+      if (!res.headersSent) {
+        return res.status(response.status).json({
+          error: `API error: ${response.status}`,
+          details: errorData
+        });
+      }
+      return;
     }
 
-    systemMessage += `\n\n## PDF Document Content:\n\n${pdfText}\n\n## User's Question:\n${message}\n\n---\n\nProvide a clear, well-formatted answer based on the PDF content above.`;
+    const anthropicContentType = response.headers.get('content-type');
+    console.log('🔍 Anthropic response content-type:', anthropicContentType);
+
+    if (!anthropicContentType || !anthropicContentType.includes('text/event-stream')) {
+      console.warn('⚠️ Anthropic did not return a stream! Returning JSON response directly...');
+      const data = await response.json();
+      // Update session cache before returning
+      updateSessionCache(sid, includedPages, currSig, havePerPageTexts, pdfPages);
+      return res.json(data);
+    }
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    console.log('✅ Starting stream...');
+
+    // Stream the response
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let chunkCount = 0;
 
     try {
-        // Build messages array with conversation history
-        const messages = [];
-
-        // Add conversation history if present
-        if (conversationHistory && conversationHistory.length > 0) {
-            // First message includes the system context + first user question
-            messages.push({
-                role: 'user',
-                content: systemMessage.replace(
-                    `## User's Question:\n${message}`,
-                    `## User's Question:\n${conversationHistory[0].content}`
-                )
-            });
-
-            // Add the rest of the conversation
-            for (let i = 1; i < conversationHistory.length; i++) {
-                messages.push(conversationHistory[i]);
-            }
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log(`Stream complete. Total chunks: ${chunkCount}`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          break;
         }
-
-        // Add current message
-        messages.push({
-            role: 'user',
-            content: conversationHistory && conversationHistory.length > 0
-                ? message  // Just the message if we have history
-                : systemMessage  // Full context if first message
-        });
-
-        const requestBody = {
-            model: MODEL,
-            max_tokens: 64000,
-            stream: true, // Enable streaming
-            messages: messages
-        };
-
-        console.log('🚀 Sending request to Anthropic API...');
-        console.log('📦 Request body:', JSON.stringify(requestBody, null, 2).substring(0, 200) + '...');
-
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': effectiveApiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        console.log('📡 Response received. Status:', response.status);
-        const responseHeaders = Object.fromEntries(response.headers.entries());
-        console.log('📋 Response headers:', responseHeaders);
-
-        if (!response.ok) {
-            const errorData = await response.text();
-            console.error('API Error:', response.status, errorData);
-
-            // Don't try to set streaming headers if there was an error
-            if (!res.headersSent) {
-                return res.status(response.status).json({
-                    error: `API error: ${response.status}`,
-                    details: errorData
-                });
-            }
-            return;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(line => line.trim() !== '');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            chunkCount++;
+            res.write(`data: ${data}\n\n`);
+          }
         }
-
-        // Check if Anthropic returned a streaming response
-        const anthropicContentType = response.headers.get('content-type');
-        console.log('🔍 Anthropic response content-type:', anthropicContentType);
-
-        if (!anthropicContentType || !anthropicContentType.includes('text/event-stream')) {
-            console.warn('⚠️ Anthropic did not return a stream! Returning JSON response directly...');
-            // Anthropic returned JSON instead of stream - just forward it
-            const data = await response.json();
-            return res.json(data);
-        }
-
-        // Set headers for SSE (Server-Sent Events)
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-
-        console.log('✅ Starting stream...');
-
-        // Stream the response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let chunkCount = 0;
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    console.log(`Stream complete. Total chunks: ${chunkCount}`);
-                    res.write('data: [DONE]\n\n');
-                    res.end();
-                    break;
-                }
-
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n').filter(line => line.trim() !== '');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        chunkCount++;
-
-                        // Forward the chunk to client
-                        res.write(`data: ${data}\n\n`);
-                    }
-                }
-            }
-        } catch (streamError) {
-            console.error('Stream error:', streamError);
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Streaming error', details: streamError.message });
-            }
-        }
-
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            details: error.message
-        });
+      }
+    } catch (streamError) {
+      console.error('Stream error:', streamError);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Streaming error', details: streamError.message });
+      }
+    } finally {
+      // Update session cache after a successful stream
+      updateSessionCache(sid, includedPages, currSig, havePerPageTexts, pdfPages);
     }
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
 });
+
+// Update session cache helper
+function updateSessionCache(sid, includedPages, pageSig, havePerPageTexts, pdfPages) {
+  if (!sid) return; // no conversation id, no caching
+  const rec = sessions.get(sid) || {};
+  rec.pageSig = pageSig;
+  rec.includedPages = includedPages ? includedPages.slice() : [];
+  if (havePerPageTexts) {
+    // Track which pages we've already sent so we can compute future deltas
+    const sentSet = new Set(rec.sentPages || []);
+    for (const p of pdfPages) {
+      if (includedPages.includes(p.page)) sentSet.add(p.page);
+    }
+    rec.sentPages = Array.from(sentSet);
+  }
+  sessions.set(sid, rec);
+}
 
 // Serve index.html for root path
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 PDF.AI Reader server running at http://localhost:${PORT}`);
-    console.log(`📄 Open http://localhost:${PORT} in your browser to use the app`);
+  console.log(`🚀 PDF.AI Reader server running at http://localhost:${PORT}`);
+  console.log(`📄 Open http://localhost}:${PORT} in your browser to use the app`);
 });

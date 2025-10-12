@@ -39,6 +39,7 @@ let chatFontSize = 14; // Default font size in pixels
 let textZoom = 1; // Scale multiplier for plain text documents
 let conversationHistory = []; // Store conversation messages for context
 let currentStream = null; // Track active streaming request for cancellation
+let conversationId = null; // Unique ID for this conversation session (enables delta optimization)
 
 // DOM Elements
 const uploadArea = document.getElementById('uploadArea');
@@ -440,6 +441,11 @@ async function extractPdfText() {
     return fullText;
 }
 
+// Generate unique conversation ID for session tracking and delta optimization
+function generateConversationId() {
+    return `conv_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+}
+
 // Estimate tokens more conservatively (1 token ≈ 3 characters for safety)
 function estimateTokens(text) {
     return Math.ceil(text.length / 3);
@@ -763,12 +769,27 @@ function updatePageInfo() {
 }
 
 // Zoom controls
-function changeZoom(delta) {
+async function changeZoom(delta) {
     if (documentType === DocumentType.PDF) {
+        // Store the current page number to scroll back to
+        const targetPage = currentPage;
+
         scale += delta;
         scale = Math.max(0.5, Math.min(scale, 3)); // Limit between 50% and 300%
         zoomLevel.textContent = Math.round(scale * 100) + '%';
-        renderAllPages();
+
+        await renderAllPages();
+
+        // Use requestAnimationFrame to ensure DOM is fully updated
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                // Scroll to the page that was visible before zooming
+                const pageElement = document.getElementById(`page-${targetPage}`);
+                if (pageElement) {
+                    pageElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+                }
+            });
+        });
     } else if (documentType === DocumentType.EPUB && epubRendition) {
         epubFontSize += delta * 25;
         epubFontSize = Math.max(60, Math.min(epubFontSize, 200));
@@ -796,12 +817,24 @@ function applyTextZoom() {
 
 async function fitToWidth() {
     if (documentType === DocumentType.PDF && pdfDocument) {
+        const targetPage = currentPage;
+
         const containerWidth = pdfContainer.clientWidth - 40; // padding
         const page = await pdfDocument.getPage(1);
         const viewport = page.getViewport({ scale: 1 });
         scale = containerWidth / viewport.width;
         zoomLevel.textContent = Math.round(scale * 100) + '%';
-        renderAllPages();
+
+        await renderAllPages();
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const pageElement = document.getElementById(`page-${targetPage}`);
+                if (pageElement) {
+                    pageElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+                }
+            });
+        });
     } else if (documentType === DocumentType.EPUB && epubRendition) {
         epubFontSize = 120;
         epubRendition.themes.fontSize('120%');
@@ -815,6 +848,8 @@ async function fitToWidth() {
 
 async function fitToPage() {
     if (documentType === DocumentType.PDF && pdfDocument) {
+        const targetPage = currentPage;
+
         const containerWidth = pdfContainer.clientWidth - 40;
         const containerHeight = pdfContainer.clientHeight - 40;
         const page = await pdfDocument.getPage(1);
@@ -823,7 +858,17 @@ async function fitToPage() {
         const scaleHeight = containerHeight / viewport.height;
         scale = Math.min(scaleWidth, scaleHeight);
         zoomLevel.textContent = Math.round(scale * 100) + '%';
-        renderAllPages();
+
+        await renderAllPages();
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const pageElement = document.getElementById(`page-${targetPage}`);
+                if (pageElement) {
+                    pageElement.scrollIntoView({ behavior: 'auto', block: 'start' });
+                }
+            });
+        });
     } else if (documentType === DocumentType.EPUB && epubRendition) {
         epubFontSize = 90;
         epubRendition.themes.fontSize('90%');
@@ -882,6 +927,7 @@ function resetApp() {
     selectedText = '';
     textZoom = 1;
     conversationHistory = []; // Clear conversation history on new document
+    conversationId = generateConversationId(); // Generate new conversation ID for delta optimization
     pdfHighlights = []; // Clear highlights on new document
 
     pdfContainer.innerHTML = '';
@@ -1461,6 +1507,7 @@ function resetChat() {
     if (confirm('Clear all chat messages?')) {
         chatMessages.innerHTML = '';
         conversationHistory = []; // Clear conversation history
+        conversationId = generateConversationId(); // Generate new conversation ID for delta optimization
         addMessageToChat('assistant', 'Chat cleared! What would you like to know about the document?');
     }
 }
@@ -1556,6 +1603,20 @@ async function sendMessage() {
 
         console.log(`💬 Conversation history: ${conversationHistory.length} messages (HTML stripped for API)`);
 
+        // Build pdfPages array for delta optimization
+        const pdfPages = smartContext.pages.map(pageNum => ({
+            page: pageNum,
+            text: pdfPageTexts[pageNum] || ''
+        }));
+
+        // Ensure conversationId exists
+        if (!conversationId) {
+            conversationId = generateConversationId();
+            console.log(`🆔 Generated new conversation ID: ${conversationId}`);
+        }
+
+        console.log(`🔄 Delta optimization: Sending ${pdfPages.length} pages with conversation ID ${conversationId}`);
+
         // Call our local API server with streaming
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -1563,7 +1624,9 @@ async function sendMessage() {
             signal: controller.signal,
             body: JSON.stringify({
                 message: message,
-                pdfText: contextText,
+                pdfText: contextText, // Fallback for server compatibility
+                pdfPages: pdfPages, // Per-page array for delta optimization
+                conversationId: conversationId, // Enable session tracking
                 conversationHistory: cleanedHistory, // Send cleaned conversation history (no HTML)
                 contextInfo: {
                     currentPage: currentPage,
