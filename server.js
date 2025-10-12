@@ -624,8 +624,34 @@ app.post('/api/fetch-url', async (req, res) => {
     const html = await response.text();
     console.log(`📄 Fetched ${html.length} characters of HTML`);
 
+    // Try to extract main content from common patterns (Wikipedia, articles, etc.)
+    let mainContent = html;
+
+    // For Wikipedia - extract the main content div
+    const wikiContentMatch = html.match(/<div[^>]*class="[^"]*mw-parser-output[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/i);
+    if (wikiContentMatch) {
+      mainContent = wikiContentMatch[1];
+      console.log('📰 Extracted Wikipedia main content');
+    } else {
+      // Try other common content patterns
+      const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+      const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+      const contentMatch = html.match(/<div[^>]*(?:class|id)="[^"]*(?:content|article|post|entry)[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+
+      if (articleMatch) {
+        mainContent = articleMatch[1];
+        console.log('📰 Extracted article content');
+      } else if (mainMatch) {
+        mainContent = mainMatch[1];
+        console.log('📰 Extracted main content');
+      } else if (contentMatch) {
+        mainContent = contentMatch[1];
+        console.log('📰 Extracted div content');
+      }
+    }
+
     // Clean HTML for display (remove scripts, styles, nav, footer but keep content structure)
-    let cleanedHtml = html
+    let cleanedHtml = mainContent
       // Remove script and style tags with their content
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
@@ -640,6 +666,11 @@ app.post('/api/fetch-url', async (req, res) => {
       .replace(/<!--[\s\S]*?-->/g, '')
       // Remove form elements (search boxes, login forms, etc)
       .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '')
+      // Remove Wikipedia-specific elements
+      .replace(/<div[^>]*class="[^"]*(?:navbox|reflist|ambox|mbox|metadata|infobox-|printfooter)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+      .replace(/<table[^>]*class="[^"]*(?:navbox|infobox|metadata)[^"]*"[^>]*>[\s\S]*?<\/table>/gi, '')
+      // Remove edit sections
+      .replace(/<span[^>]*class="[^"]*mw-editsection[^"]*"[^>]*>[\s\S]*?<\/span>/gi, '')
       // Remove common class-based UI elements
       .replace(/<div[^>]*class="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
       .replace(/<div[^>]*id="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '');
