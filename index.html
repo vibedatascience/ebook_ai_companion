@@ -58,6 +58,16 @@
                     <p>Click to select or drag and drop a PDF, EPUB, or TXT file</p>
                     <input type="file" id="fileInput" accept=".pdf,.epub,.txt,text/plain" hidden>
                     <button id="uploadBtn" class="btn-primary">Choose File</button>
+                    <!-- Progress bar for file loading -->
+                    <div id="loadingProgress" class="loading-progress" style="display: none;">
+                        <div class="progress-info">
+                            <span id="loadingStatus">Loading...</span>
+                            <span id="loadingPercent">0%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div id="loadingProgressBar" class="progress-bar"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="pdf-viewer" id="pdfViewer" style="display: none;">

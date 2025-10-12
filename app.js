@@ -84,6 +84,28 @@ const apiKeyClose = document.getElementById('apiKeyClose');
 const apiKeyForm = document.getElementById('apiKeyForm');
 const apiKeyInput = document.getElementById('apiKeyInput');
 const apiKeyClear = document.getElementById('apiKeyClear');
+const loadingProgress = document.getElementById('loadingProgress');
+const loadingStatus = document.getElementById('loadingStatus');
+const loadingPercent = document.getElementById('loadingPercent');
+const loadingProgressBar = document.getElementById('loadingProgressBar');
+
+// Progress bar helper functions
+function showProgress(statusText = 'Loading...', percent = 0) {
+    if (loadingProgress) {
+        loadingProgress.style.display = 'block';
+        updateProgress(statusText, percent);
+    }
+}
+
+function updateProgress(statusText, percent) {
+    if (loadingStatus) loadingStatus.textContent = statusText;
+    if (loadingPercent) loadingPercent.textContent = `${Math.round(percent)}%`;
+    if (loadingProgressBar) loadingProgressBar.style.width = `${percent}%`;
+}
+
+function hideProgress() {
+    if (loadingProgress) loadingProgress.style.display = 'none';
+}
 
 // Event Listeners
 uploadBtn.addEventListener('click', () => fileInput.click());
@@ -251,6 +273,8 @@ async function handleFileSelect(event) {
     }
 
     try {
+        showProgress('Reading file...', 0);
+
         if (isPdf) {
             await loadPDF(file);
         } else if (isEpub) {
@@ -259,6 +283,7 @@ async function handleFileSelect(event) {
             await loadText(file);
         }
 
+        hideProgress();
         uploadArea.style.display = 'none';
         pdfViewer.style.display = 'flex';
         chatInput.disabled = false;
@@ -271,6 +296,7 @@ async function handleFileSelect(event) {
         addMessageToChat('assistant', `${docLabel} loaded! I\u2019m ready to answer questions about your document. You can also select text to copy or ask me to explain it. What would you like to know?`);
     } catch (error) {
         console.error('Error loading document:', error);
+        hideProgress();
         alert('Failed to load document. Please try again.');
     }
 }
@@ -295,23 +321,30 @@ async function loadPDF(file) {
     }
     pdfViewer.classList.remove('is-epub');
 
+    updateProgress('Loading PDF...', 10);
     const arrayBuffer = await file.arrayBuffer();
+
+    updateProgress('Processing PDF pages...', 20);
     pdfDocument = await pdfjsLib.getDocument(arrayBuffer).promise;
 
     currentPage = 1;
     scale = 1.5;
     zoomLevel.textContent = Math.round(scale * 100) + '%';
 
-    // Extract all text from PDF
-    pdfText = await extractPdfText();
-
     // Update page info
     pageTotal.textContent = `/ ${pdfDocument.numPages}`;
     pageInput.max = pdfDocument.numPages;
     pageInput.value = currentPage;
 
+    updateProgress(`Extracting text from ${pdfDocument.numPages} pages...`, 30);
+    // Extract all text from PDF
+    pdfText = await extractPdfText();
+
+    updateProgress('Rendering pages...', 70);
     // Render all pages
     await renderAllPages();
+
+    updateProgress('Finalizing...', 95);
 
     updatePageInfo();
 
@@ -427,7 +460,8 @@ async function extractPdfText() {
     let fullText = '';
     pdfPageTexts = {}; // Reset
 
-    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+    const totalPages = pdfDocument.numPages;
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         const page = await pdfDocument.getPage(pageNum);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map(item => item.str).join(' ');
@@ -436,6 +470,12 @@ async function extractPdfText() {
         pdfPageTexts[pageNum] = pageText;
 
         fullText += `\n\n--- Page ${pageNum} ---\n${pageText}`;
+
+        // Update progress for text extraction (30% to 70% range)
+        const extractionProgress = 30 + ((pageNum / totalPages) * 40);
+        if (pageNum % 5 === 0 || pageNum === totalPages) {
+            updateProgress(`Extracting text: ${pageNum}/${totalPages} pages`, extractionProgress);
+        }
     }
 
     return fullText;
