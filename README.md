@@ -1,6 +1,6 @@
-# Ebooks AI Companion
+# Ebook Visual AI Companion
 
-A beautiful, minimal Claude-powered assistant for chatting with PDFs, EPUBs, and webpages. Features real-time streaming responses, smart delta optimization, and a sleek edge-to-edge interface.
+A visual aid for dry, drab text. Transform boring documents into engaging conversations with this beautiful, minimal Claude-powered assistant. Features real-time streaming responses, smart delta optimization, and a sleek edge-to-edge interface for PDFs, EPUBs, and webpages.
 
 ## ✨ Features
 
