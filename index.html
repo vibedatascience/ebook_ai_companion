@@ -22,6 +22,12 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Configure backend API URL -->
+    <script>
+        window.PDF_AI_CONFIG = {
+            API_URL: 'https://ebook-ai-companion.onrender.com/api/chat'
+        };
+    </script>
 </head>
 <body>
     <div class="app-wrapper">
@@ -66,9 +72,9 @@
                             <span>Load from Web</span>
                             <span class="beta-badge">BETA</span>
                         </div>
-                        <p class="url-note">Works best with Wikipedia. Other sites may have limited support.</p>
+                        <p class="url-note">Load any webpage with AI text extraction. Works great with Wikipedia, articles, and documentation.</p>
                         <div class="url-input-container">
-                            <input type="url" id="urlInput" placeholder="Enter Wikipedia URL (e.g., https://en.wikipedia.org/wiki/...)">
+                            <input type="url" id="urlInput" placeholder="Enter URL (e.g., https://en.wikipedia.org/wiki/...)">
                             <button id="loadUrlBtn" class="btn-secondary">Load URL</button>
                         </div>
                     </div>

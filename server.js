@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = 3001;
@@ -109,7 +110,7 @@ Quickly identify the document type and adapt your response style:
 2. **Secondary**: Your general knowledge (for context, examples, explanations)
    - Always clarify source: "According to page 5..." vs "From general knowledge..."
 
-## Citation System:
+## Citation System: [ONLY FOR AN ACTUAL BOOK OR PAPER NOT FROM ANYTHING THAT LOOKS LIKE A WEBSITE OR BLOG OR WIKI]
 - **Direct quotes**: "exact text" [p.5]
 - **Paraphrasing**: According to page 7, ... or [p.7]
 - **Cross-references**: "This relates to the concept on page 12"
@@ -117,6 +118,7 @@ Quickly identify the document type and adapt your response style:
   - High: "The document clearly states..." [p.X]
   - Medium: "Based on page X, it appears..."
   - Low: "The document doesn't explicitly address this, but..."
+- ONLY PROVIDE CITATIONS FORM AN ACTUAL BOOK OR PAPER, NOT FROM PDF OF DATA TABLES OR WEBSITE OR ANYTHING ELSE. ONLY PROPER BOOKs.
 
 ---
 
@@ -524,10 +526,14 @@ messages.push({ role: 'user', content: userContent }); // userContent already de
       return res.json(data);
     }
 
-    // SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    // SSE headers - properly configure for streaming
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no', // Disable nginx buffering
+      'Transfer-Encoding': 'chunked'
+    });
 
     console.log('✅ Starting stream...');
 
@@ -535,6 +541,12 @@ messages.push({ role: 'user', content: userContent }); // userContent already de
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let chunkCount = 0;
+
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log('⚠️ Client disconnected early');
+      reader.cancel();
+    });
 
     try {
       while (true) {
@@ -551,14 +563,19 @@ messages.push({ role: 'user', content: userContent }); // userContent already de
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             chunkCount++;
-            res.write(`data: ${data}\n\n`);
+            const written = res.write(`data: ${data}\n\n`);
+            // If buffer is full, wait for drain
+            if (!written) {
+              await new Promise(resolve => res.once('drain', resolve));
+            }
           }
         }
       }
     } catch (streamError) {
       console.error('Stream error:', streamError);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Streaming error', details: streamError.message });
+      // Don't try to send JSON after streaming has started
+      if (!res.writableEnded) {
+        res.end();
       }
     } finally {
       // Update session cache after a successful stream
@@ -591,10 +608,11 @@ function updateSessionCache(sid, includedPages, pageSig, havePerPageTexts, pdfPa
 }
 
 // API endpoint to fetch and extract webpage content
-app.post('/api/fetch-url', async (req, res) => {
+// Convert URL to PDF endpoint
+app.post('/api/url-to-pdf', async (req, res) => {
   const { url } = req.body;
 
-  console.log('📨 Received URL fetch request:', url);
+  console.log('📨 Received URL to PDF request:', url);
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
@@ -607,128 +625,68 @@ app.post('/api/fetch-url', async (req, res) => {
     return res.status(400).json({ error: 'Invalid URL format' });
   }
 
+  let browser = null;
+
   try {
-    console.log(`🌐 Fetching content from: ${url}`);
+    console.log(`🌐 Launching browser and navigating to: ${url}`);
 
-    // Fetch the webpage
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    // Launch headless browser
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    const page = await browser.newPage();
+
+    // Set viewport for consistent rendering
+    await page.setViewport({ width: 1200, height: 800 });
+
+    // Navigate to URL with timeout
+    await page.goto(url, {
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    });
+
+    console.log('📄 Page loaded, generating PDF...');
+
+    // Generate PDF with good settings
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        right: '20px',
+        bottom: '20px',
+        left: '20px'
       }
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
-    }
+    await browser.close();
+    browser = null;
 
-    const html = await response.text();
-    console.log(`📄 Fetched ${html.length} characters of HTML`);
+    console.log(`✅ PDF generated (${pdfBuffer.length} bytes)`);
 
-    // Try to extract main content from common patterns (Wikipedia, articles, etc.)
-    let mainContent = html;
-
-    // For Wikipedia - extract the main parser output content
-    // Look for the div with class "mw-parser-output" which contains the article
-    const wikiStart = html.indexOf('class="mw-parser-output"');
-    if (wikiStart !== -1) {
-      // Find the opening tag
-      const openTag = html.lastIndexOf('<div', wikiStart);
-      if (openTag !== -1) {
-        // Find where this content section likely ends (before footer/related content)
-        let endPos = html.indexOf('<div class="printfooter"', openTag);
-        if (endPos === -1) endPos = html.indexOf('id="catlinks"', openTag);
-        if (endPos === -1) endPos = html.indexOf('class="navbox"', openTag);
-        if (endPos === -1) endPos = html.length;
-
-        mainContent = html.substring(openTag, endPos);
-        console.log(`📰 Extracted Wikipedia main content (${mainContent.length} chars)`);
-      }
-    } else {
-      // Try other common content patterns
-      const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-      const mainMatch = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-
-      if (articleMatch) {
-        mainContent = articleMatch[1];
-        console.log('📰 Extracted article content');
-      } else if (mainMatch) {
-        mainContent = mainMatch[1];
-        console.log('📰 Extracted main content');
-      }
-    }
-
-    // Clean HTML for display (remove scripts, styles, nav, footer but keep content structure)
-    let cleanedHtml = mainContent
-      // Remove script and style tags with their content
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      // Remove noscript tags
-      .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
-      // Remove common navigation/UI elements
-      .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
-      .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
-      .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
-      .replace(/<aside\b[^<]*(?:(?!<\/aside>)<[^<]*)*<\/aside>/gi, '')
-      // Remove HTML comments
-      .replace(/<!--[\s\S]*?-->/g, '')
-      // Remove form elements (search boxes, login forms, etc)
-      .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '')
-      // Remove Wikipedia-specific elements
-      .replace(/<div[^>]*class="[^"]*(?:navbox|reflist|ambox|mbox|metadata|infobox-|printfooter)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
-      .replace(/<table[^>]*class="[^"]*(?:navbox|infobox|metadata)[^"]*"[^>]*>[\s\S]*?<\/table>/gi, '')
-      // Remove edit sections
-      .replace(/<span[^>]*class="[^"]*mw-editsection[^"]*"[^>]*>[\s\S]*?<\/span>/gi, '')
-      // Remove common class-based UI elements
-      .replace(/<div[^>]*class="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
-      .replace(/<div[^>]*id="[^"]*(?:nav|menu|sidebar|header|footer|banner|cookie|ad)[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '');
-
-    // Extract text for LLM context (plain text version)
-    let text = cleanedHtml
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ')
-      .replace(/\n\s*\n/g, '\n\n')
-      .trim();
-
-    // Fix relative URLs to absolute URLs so images and links work
-    const urlObj = new URL(url);
-    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-
-    cleanedHtml = cleanedHtml
-      // Fix image src attributes
-      .replace(/src="\/\//g, 'src="https://')
-      .replace(/src="\//g, `src="${baseUrl}/`)
-      // Fix link href attributes
-      .replace(/href="\/\//g, 'href="https://')
-      .replace(/href="\//g, `href="${baseUrl}/`)
-      // Fix srcset attributes for responsive images
-      .replace(/srcset="\/\//g, 'srcset="https://')
-      .replace(/srcset="\//g, `srcset="${baseUrl}/`);
-
-    console.log(`✅ Cleaned HTML: ${cleanedHtml.length} chars, Text: ${text.length} chars`);
-
-    // Get page title from HTML
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : new URL(url).hostname;
-
-    res.json({
-      success: true,
-      url: url,
-      title: title,
-      html: cleanedHtml,  // Send cleaned HTML for display
-      text: text,         // Send plain text for LLM
-      length: text.length
+    // Send PDF as binary data (use end() to avoid any Express transformations)
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Length': pdfBuffer.length,
+      'Content-Disposition': 'inline'
     });
+    res.end(pdfBuffer, 'binary');
 
   } catch (error) {
-    console.error('❌ Error fetching URL:', error);
+    console.error('❌ Error converting URL to PDF:', error);
+
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+
     res.status(500).json({
-      error: 'Failed to fetch webpage',
+      error: 'Failed to convert webpage to PDF',
       details: error.message
     });
   }
