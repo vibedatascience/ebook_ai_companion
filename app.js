@@ -88,6 +88,8 @@ const loadingProgress = document.getElementById('loadingProgress');
 const loadingStatus = document.getElementById('loadingStatus');
 const loadingPercent = document.getElementById('loadingPercent');
 const loadingProgressBar = document.getElementById('loadingProgressBar');
+const urlInput = document.getElementById('urlInput');
+const loadUrlBtn = document.getElementById('loadUrlBtn');
 
 // Progress bar helper functions
 function showProgress(statusText = 'Loading...', percent = 0) {
@@ -113,6 +115,10 @@ if (headerUploadBtn) {
     headerUploadBtn.addEventListener('click', () => fileInput.click());
 }
 fileInput.addEventListener('change', handleFileSelect);
+loadUrlBtn.addEventListener('click', handleUrlLoad);
+urlInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleUrlLoad();
+});
 prevPageBtn.addEventListener('click', () => goToPage(currentPage - 1));
 nextPageBtn.addEventListener('click', () => goToPage(currentPage + 1));
 pageInput.addEventListener('change', (e) => goToPage(parseInt(e.target.value)));
@@ -639,6 +645,131 @@ async function loadText(file) {
         const textPage = document.createElement('div');
         textPage.className = 'text-page';
         textPage.textContent = text;
+
+        textContainer.innerHTML = '';
+        textContainer.appendChild(textPage);
+        applyTextZoom();
+        textContainer.scrollTop = 0;
+    }
+
+    pageInput.value = 1;
+    pageInput.max = 1;
+    pageTotal.textContent = '/ 1';
+
+    updatePageInfo();
+}
+
+// Handle URL load button click
+async function handleUrlLoad() {
+    const url = urlInput.value.trim();
+    if (!url) {
+        alert('Please enter a URL');
+        return;
+    }
+
+    try {
+        showProgress('Fetching webpage...', 0);
+        loadUrlBtn.disabled = true;
+        urlInput.disabled = true;
+
+        const response = await fetch(`${API_URL.replace('/chat', '/fetch-url')}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url })
+        });
+
+        updateProgress('Extracting content...', 50);
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.details || error.error || 'Failed to fetch URL');
+        }
+
+        const data = await response.json();
+        updateProgress('Loading content...', 80);
+
+        // Load the webpage content as a text document
+        await loadWebpage(data.title, data.text, url);
+
+        updateProgress('Complete!', 100);
+        hideProgress();
+
+        uploadArea.style.display = 'none';
+        pdfViewer.style.display = 'flex';
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+
+        // Clear welcome message and show reset button
+        chatMessages.innerHTML = '';
+        resetChatBtn.style.display = 'flex';
+        addMessageToChat('assistant', `Webpage loaded! I'm ready to answer questions about: **${data.title}**\n\nWhat would you like to know?`);
+
+        // Clear URL input
+        urlInput.value = '';
+
+    } catch (error) {
+        console.error('Error loading URL:', error);
+        hideProgress();
+        alert(`Failed to load webpage: ${error.message}`);
+    } finally {
+        loadUrlBtn.disabled = false;
+        urlInput.disabled = false;
+    }
+}
+
+// Load webpage content as a document
+async function loadWebpage(title, text, url) {
+    documentType = DocumentType.TEXT;
+    pdfDocument = null;
+    epubBook = null;
+    if (epubRendition) {
+        epubRendition.destroy();
+        epubRendition = null;
+    }
+    epubSpineItems = [];
+    epubHrefToIndex = {};
+
+    pdfContainer.style.display = 'none';
+    pdfContainer.innerHTML = '';
+    epubContainer.style.display = 'none';
+    epubContainer.innerHTML = '';
+    if (textContainer) {
+        textContainer.style.display = 'block';
+    }
+    pdfViewer.classList.remove('is-epub');
+
+    pdfText = text;
+    pdfPageTexts = { 1: text };
+    currentPage = 1;
+    textZoom = 1;
+    zoomLevel.textContent = '100%';
+
+    if (textContainer) {
+        // Create a page with title and content
+        const textPage = document.createElement('div');
+        textPage.className = 'text-page';
+
+        const titleEl = document.createElement('h1');
+        titleEl.style.marginBottom = '20px';
+        titleEl.style.color = '#2e2a24';
+        titleEl.textContent = title;
+
+        const urlEl = document.createElement('div');
+        urlEl.style.marginBottom = '20px';
+        urlEl.style.color = '#8a7860';
+        urlEl.style.fontSize = '14px';
+        urlEl.innerHTML = `<a href="${url}" target="_blank" style="color: #f26532;">${url}</a>`;
+
+        const contentEl = document.createElement('pre');
+        contentEl.style.whiteSpace = 'pre-wrap';
+        contentEl.style.fontFamily = 'inherit';
+        contentEl.textContent = text;
+
+        textPage.appendChild(titleEl);
+        textPage.appendChild(urlEl);
+        textPage.appendChild(contentEl);
 
         textContainer.innerHTML = '';
         textContainer.appendChild(textPage);

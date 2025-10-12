@@ -54,10 +54,17 @@
                         <polyline points="17 8 12 3 7 8"></polyline>
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                    <h2>Upload Document</h2>
-                    <p>Click to select or drag and drop a PDF, EPUB, or TXT file</p>
+                    <h2>Load Document</h2>
+                    <p>Upload a file or enter a webpage URL</p>
                     <input type="file" id="fileInput" accept=".pdf,.epub,.txt,text/plain" hidden>
                     <button id="uploadBtn" class="btn-primary">Choose File</button>
+                    <div class="url-divider">
+                        <span>OR</span>
+                    </div>
+                    <div class="url-input-container">
+                        <input type="url" id="urlInput" placeholder="Enter URL (e.g., https://en.wikipedia.org/wiki/...)">
+                        <button id="loadUrlBtn" class="btn-secondary">Load URL</button>
+                    </div>
                     <!-- Progress bar for file loading -->
                     <div id="loadingProgress" class="loading-progress" style="display: none;">
                         <div class="progress-info">

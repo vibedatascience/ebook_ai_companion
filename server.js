@@ -590,6 +590,85 @@ function updateSessionCache(sid, includedPages, pageSig, havePerPageTexts, pdfPa
   sessions.set(sid, rec);
 }
 
+// API endpoint to fetch and extract webpage content
+app.post('/api/fetch-url', async (req, res) => {
+  const { url } = req.body;
+
+  console.log('📨 Received URL fetch request:', url);
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  // Basic URL validation
+  try {
+    new URL(url);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid URL format' });
+  }
+
+  try {
+    console.log(`🌐 Fetching content from: ${url}`);
+
+    // Fetch the webpage
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    console.log(`📄 Fetched ${html.length} characters of HTML`);
+
+    // Simple HTML to text conversion (removes scripts, styles, and tags)
+    let text = html
+      // Remove script and style tags with their content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      // Remove HTML comments
+      .replace(/<!--[\s\S]*?-->/g, '')
+      // Replace common block elements with newlines
+      .replace(/<\/(div|p|br|h[1-6]|li|tr|section|article|header|footer)>/gi, '\n')
+      // Remove all remaining HTML tags
+      .replace(/<[^>]+>/g, '')
+      // Decode HTML entities
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      // Clean up whitespace
+      .replace(/\n\s*\n/g, '\n\n')
+      .trim();
+
+    console.log(`✅ Extracted ${text.length} characters of text`);
+
+    // Get page title from HTML
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : new URL(url).hostname;
+
+    res.json({
+      success: true,
+      url: url,
+      title: title,
+      text: text,
+      length: text.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching URL:', error);
+    res.status(500).json({
+      error: 'Failed to fetch webpage',
+      details: error.message
+    });
+  }
+});
+
 // Serve index.html for root path
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
