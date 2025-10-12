@@ -52,7 +52,8 @@ app.post('/api/chat', async (req, res) => {
   }
   // Require some form of document content on first turn
   const isFirstTurn = !(conversationHistory && conversationHistory.length);
-  if (isFirstTurn && !pdfText && !Array.isArray(pdfPages)) {
+  const hasValidPages = Array.isArray(pdfPages) && pdfPages.length > 0;
+  if (isFirstTurn && !pdfText && !hasValidPages) {
     return res.status(400).json({ error: 'PDF text or pdfPages are required on the first turn' });
   }
 
@@ -630,9 +631,20 @@ app.post('/api/url-to-pdf', async (req, res) => {
   try {
     console.log(`🌐 Launching browser and navigating to: ${url}`);
 
+    // Find Chrome executable path (Puppeteer auto-detection)
+    let executablePath;
+    try {
+      executablePath = puppeteer.executablePath();
+      console.log(`✅ Found Chrome at: ${executablePath}`);
+    } catch (err) {
+      console.warn('⚠️ Could not auto-detect Chrome, trying environment variable...');
+      executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    }
+
     // Launch headless browser with Render-compatible args
     browser = await puppeteer.launch({
       headless: 'new',
+      executablePath: executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
