@@ -90,6 +90,8 @@ const loadingPercent = document.getElementById('loadingPercent');
 const loadingProgressBar = document.getElementById('loadingProgressBar');
 const urlInput = document.getElementById('urlInput');
 const loadUrlBtn = document.getElementById('loadUrlBtn');
+const apiKeyBanner = document.getElementById('apiKeyBanner');
+const closeBanner = document.getElementById('closeBanner');
 
 // Progress bar helper functions
 function showProgress(statusText = 'Loading...', percent = 0) {
@@ -668,11 +670,13 @@ async function handleUrlLoad() {
     }
 
     try {
-        showProgress('Fetching webpage...', 0);
+        showProgress('Converting webpage to PDF...', 0);
         loadUrlBtn.disabled = true;
         urlInput.disabled = true;
 
-        const response = await fetch(`${API_URL.replace('/chat', '/fetch-url')}`, {
+        updateProgress('Launching browser...', 20);
+
+        const response = await fetch(`${API_URL.replace('/chat', '/url-to-pdf')}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -680,31 +684,124 @@ async function handleUrlLoad() {
             body: JSON.stringify({ url })
         });
 
-        updateProgress('Extracting content...', 50);
+        updateProgress('Generating PDF...', 60);
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.details || error.error || 'Failed to fetch URL');
+            let errorMsg = 'Failed to convert URL';
+            try {
+                const error = await response.json();
+                errorMsg = error.details || error.error || errorMsg;
+            } catch (e) {
+                errorMsg = await response.text() || errorMsg;
+            }
+            throw new Error(errorMsg);
         }
 
-        const data = await response.json();
-        updateProgress('Loading content...', 80);
+        updateProgress('Loading webpage...', 80);
 
-        // Load the webpage content as a document (with HTML for display, text for LLM)
-        await loadWebpage(data.title, data.text, data.html, url);
+        // Get PDF as blob directly from response (for text extraction)
+        const pdfBlob = await response.blob();
+
+        // Extract text from PDF for the LLM
+        const pdfFile = new File([pdfBlob], `${new URL(url).hostname}.pdf`, { type: 'application/pdf' });
+        const arrayBuffer = await pdfFile.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        pdfDocument = await loadingTask.promise;
+        totalPages = pdfDocument.numPages;
+
+        // Extract all text from PDF for LLM context
+        pdfPageTexts = {};
+        for (let i = 1; i <= totalPages; i++) {
+            const page = await pdfDocument.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ');
+            pdfPageTexts[i] = pageText;
+        }
+
+        // But display the actual webpage in an iframe (better visual experience)
+        documentType = DocumentType.TEXT;
+        currentPage = 1;
+
+        // Clear and show iframe with the actual webpage
+        textContainer.innerHTML = '';
+
+        // Force remove all padding and background from text container
+        textContainer.style.padding = '0';
+        textContainer.style.background = 'white';
+        textContainer.style.overflow = 'hidden';
+
+        const iframeContainer = document.createElement('div');
+        iframeContainer.className = 'iframe-container';
+
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.sandbox = 'allow-same-origin allow-scripts allow-popups allow-forms';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+
+        // Try to scroll past headers/navigation once iframe loads
+        iframe.addEventListener('load', () => {
+            console.log('🖼️ Iframe loaded:', url);
+
+            try {
+                // Try to find and scroll to main content
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                console.log('✅ Can access iframe document');
+
+                // Log the page structure
+                console.log('📐 Iframe dimensions:', {
+                    scrollHeight: iframeDoc.documentElement.scrollHeight,
+                    clientHeight: iframeDoc.documentElement.clientHeight,
+                    scrollWidth: iframeDoc.documentElement.scrollWidth
+                });
+
+                // Look for common content selectors
+                const selectors = ['main', 'article', '[role="main"]', '.content', '#content', '.post', '.article', 'body > div'];
+                let mainContent = null;
+
+                for (const selector of selectors) {
+                    mainContent = iframeDoc.querySelector(selector);
+                    if (mainContent) {
+                        console.log(`✅ Found content using selector: ${selector}`);
+                        const rect = mainContent.getBoundingClientRect();
+                        console.log('📍 Content position:', { top: rect.top, left: rect.left, height: rect.height });
+
+                        // Scroll to it
+                        mainContent.scrollIntoView({ behavior: 'instant', block: 'start' });
+                        console.log('📜 Scrolled to content');
+                        break;
+                    }
+                }
+
+                if (!mainContent) {
+                    console.log('⚠️ Could not find main content element');
+                }
+            } catch (err) {
+                // Cross-origin restriction - can't access iframe content
+                console.log('❌ Cannot auto-scroll iframe (cross-origin):', err.message);
+            }
+        });
+
+        iframeContainer.appendChild(iframe);
+        textContainer.appendChild(iframeContainer);
 
         updateProgress('Complete!', 100);
         hideProgress();
 
         uploadArea.style.display = 'none';
         pdfViewer.style.display = 'flex';
+
+        // Show text container with iframe
+        textContainer.style.display = 'block';
+
         chatInput.disabled = false;
         sendBtn.disabled = false;
 
         // Clear welcome message and show reset button
         chatMessages.innerHTML = '';
         resetChatBtn.style.display = 'flex';
-        addMessageToChat('assistant', `Webpage loaded! I'm ready to answer questions about: **${data.title}**\n\nWhat would you like to know?`);
+        addMessageToChat('assistant', `Webpage loaded! I can answer questions about: **${url}**\n\nWhat would you like to know?`);
 
         // Clear URL input
         urlInput.value = '';
@@ -712,7 +809,7 @@ async function handleUrlLoad() {
     } catch (error) {
         console.error('Error loading URL:', error);
         hideProgress();
-        alert(`Failed to load webpage: ${error.message}`);
+        alert(`Failed to convert webpage to PDF: ${error.message}`);
     } finally {
         loadUrlBtn.disabled = false;
         urlInput.disabled = false;
@@ -835,15 +932,21 @@ async function renderPage(pageNumber) {
                 const linkElement = document.createElement('a');
                 linkElement.className = 'pdf-link-annotation';
 
-                // Position the link overlay
+                // Position the link overlay using viewport transformation
                 const rect = annotation.rect;
                 const [x1, y1, x2, y2] = rect;
 
+                // Transform the coordinates to match the scaled viewport
+                const x = Math.min(x1, x2) * scale;
+                const y = (viewport.height / scale - Math.max(y1, y2)) * scale;
+                const width = Math.abs(x2 - x1) * scale;
+                const height = Math.abs(y2 - y1) * scale;
+
                 linkElement.style.position = 'absolute';
-                linkElement.style.left = `${Math.min(x1, x2)}px`;
-                linkElement.style.top = `${viewport.height - Math.max(y1, y2)}px`;
-                linkElement.style.width = `${Math.abs(x2 - x1)}px`;
-                linkElement.style.height = `${Math.abs(y2 - y1)}px`;
+                linkElement.style.left = `${x}px`;
+                linkElement.style.top = `${y}px`;
+                linkElement.style.width = `${width}px`;
+                linkElement.style.height = `${height}px`;
                 linkElement.style.cursor = 'pointer';
                 linkElement.style.background = 'rgba(242, 101, 50, 0.1)';
                 linkElement.style.border = '1px solid rgba(242, 101, 50, 0.3)';
@@ -868,22 +971,29 @@ async function renderPage(pageNumber) {
                     // Internal destination (page reference)
                     linkElement.addEventListener('click', async (e) => {
                         e.preventDefault();
+                        e.stopPropagation();
+
+                        console.log('📌 Clicked internal link:', annotation.dest);
 
                         try {
                             const dest = typeof annotation.dest === 'string'
                                 ? await pdfDocument.getDestination(annotation.dest)
                                 : annotation.dest;
 
+                            console.log('📍 Resolved destination:', dest);
+
                             if (dest && dest[0]) {
                                 const pageRef = dest[0];
                                 const targetPageNum = await pdfDocument.getPageIndex(pageRef) + 1;
+                                console.log(`🔗 Navigating to page ${targetPageNum}`);
                                 goToPage(targetPageNum);
                             }
                         } catch (err) {
-                            console.warn('Failed to navigate to destination:', err);
+                            console.error('❌ Failed to navigate to destination:', err);
                         }
                     });
                     linkElement.title = 'Jump to section';
+                    linkElement.style.zIndex = '10'; // Ensure links are on top
                 }
 
                 pageDiv.appendChild(linkElement);
@@ -1718,6 +1828,12 @@ async function sendMessage() {
     const message = chatInput.value.trim();
     if (!message) return;
 
+    // Check if API key is set
+    if (!userApiKey) {
+        alert('⚠️ API Key Required\n\nPlease set your Anthropic API key by clicking the "Set Claude API key" button in the top right.\n\nYour API key is stored locally in your browser only.\n\nNeed an API key? Ask Rahul!');
+        return;
+    }
+
     // Add user message to chat
     addMessageToChat('user', message);
     chatInput.value = '';
@@ -2147,6 +2263,11 @@ function updateApiKeyStatus() {
         apiKeyStatus.textContent = 'Not set';
         apiKeyStatus.classList.remove('set');
     }
+
+    // Update banner visibility when API key changes
+    if (typeof updateBannerVisibility === 'function') {
+        updateBannerVisibility();
+    }
 }
 
 function loadStoredApiKey() {
@@ -2186,6 +2307,29 @@ function loadChatFontSize() {
 // Initialize font size
 loadChatFontSize();
 loadStoredApiKey();
+
+// Banner logic - show if API key not set, hide on close
+function updateBannerVisibility() {
+    const bannerDismissed = localStorage.getItem('apiKeyBannerDismissed');
+    if (apiKeyBanner) {
+        if (!userApiKey && !bannerDismissed) {
+            apiKeyBanner.classList.remove('hidden');
+        } else {
+            apiKeyBanner.classList.add('hidden');
+        }
+    }
+}
+
+if (closeBanner) {
+    closeBanner.addEventListener('click', () => {
+        if (apiKeyBanner) {
+            apiKeyBanner.classList.add('hidden');
+            localStorage.setItem('apiKeyBannerDismissed', 'true');
+        }
+    });
+}
+
+updateBannerVisibility();
 
 // Make internal links clickable for navigation
 function makeLinksClickable(container, currentChapter) {

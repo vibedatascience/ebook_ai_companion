@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF.AI Reader</title>
+    <title>AI Assistant with Context</title>
     <link rel="stylesheet" href="styles.css">
     <!-- KaTeX for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -31,11 +31,26 @@
 </head>
 <body>
     <div class="app-wrapper">
+        <!-- API Key Notice Banner -->
+        <div id="apiKeyBanner" class="api-key-banner">
+            <div class="banner-content">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                <div class="banner-text">
+                    <strong>API Key Required:</strong> Click "Set Claude API key" to enter your Anthropic API key.
+                    It's stored locally in your browser only. Need one? Ask Rahul!
+                </div>
+                <button id="closeBanner" class="banner-close" aria-label="Close banner">×</button>
+            </div>
+        </div>
         <header class="app-header">
             <div class="header-left">
                 <div class="brand">
                     <span class="brand-mark"></span>
-                    <span class="brand-name">PDF.ai</span>
+                    <span class="brand-name">AI Assistant with Context</span>
                 </div>
                 <button id="headerUploadBtn" class="btn-upload">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -70,7 +85,7 @@
                     <div class="url-section">
                         <div class="url-header">
                             <span>Load from Web</span>
-                            <span class="beta-badge">BETA</span>
+                            <span class="wip-badge">WORK IN PROGRESS</span>
                         </div>
                         <p class="url-note">Load any webpage with AI text extraction. Works great with Wikipedia, articles, and documentation.</p>
                         <div class="url-input-container">
