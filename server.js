@@ -695,6 +695,21 @@ app.post('/api/fetch-url', async (req, res) => {
       .replace(/\n\s*\n/g, '\n\n')
       .trim();
 
+    // Fix relative URLs to absolute URLs so images and links work
+    const urlObj = new URL(url);
+    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+
+    cleanedHtml = cleanedHtml
+      // Fix image src attributes
+      .replace(/src="\/\//g, 'src="https://')
+      .replace(/src="\//g, `src="${baseUrl}/`)
+      // Fix link href attributes
+      .replace(/href="\/\//g, 'href="https://')
+      .replace(/href="\//g, `href="${baseUrl}/`)
+      // Fix srcset attributes for responsive images
+      .replace(/srcset="\/\//g, 'srcset="https://')
+      .replace(/srcset="\//g, `srcset="${baseUrl}/`);
+
     console.log(`✅ Cleaned HTML: ${cleanedHtml.length} chars, Text: ${text.length} chars`);
 
     // Get page title from HTML
