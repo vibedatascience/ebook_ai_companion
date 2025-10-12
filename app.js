@@ -2260,7 +2260,7 @@ function updateApiKeyStatus() {
         apiKeyStatus.textContent = 'Set';
         apiKeyStatus.classList.add('set');
     } else {
-        apiKeyStatus.textContent = 'Not set';
+        apiKeyStatus.textContent = 'Set API Key';
         apiKeyStatus.classList.remove('set');
     }
 

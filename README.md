@@ -1,4 +1,4 @@
-# AI Assistant with Context
+# Ebooks AI Companion
 
 A beautiful, minimal Claude-powered assistant for chatting with PDFs, EPUBs, and webpages. Features real-time streaming responses, smart delta optimization, and a sleek edge-to-edge interface.
 
