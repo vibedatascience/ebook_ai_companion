@@ -631,17 +631,52 @@ app.post('/api/url-to-pdf', async (req, res) => {
   try {
     console.log(`🌐 Launching browser and navigating to: ${url}`);
 
-    // Find Chrome executable path (Puppeteer auto-detection)
+    // Find Chrome executable path with platform-specific fallbacks
     let executablePath;
     try {
       executablePath = puppeteer.executablePath();
       console.log(`✅ Found Chrome at: ${executablePath}`);
     } catch (err) {
-      console.warn('⚠️ Could not auto-detect Chrome, trying environment variable...');
-      executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+      console.warn('⚠️ Could not auto-detect Chrome, trying fallbacks...');
+
+      // Try environment variable first
+      executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+      // Platform-specific Chrome locations
+      if (!executablePath) {
+        const fs = require('fs');
+        const platformPaths = {
+          darwin: [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium'
+          ],
+          linux: [
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium'
+          ],
+          win32: [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+          ]
+        };
+
+        const paths = platformPaths[process.platform] || [];
+        for (const chromePath of paths) {
+          if (fs.existsSync(chromePath)) {
+            executablePath = chromePath;
+            console.log(`✅ Found Chrome at fallback location: ${executablePath}`);
+            break;
+          }
+        }
+      }
+
+      if (!executablePath) {
+        console.error('❌ Could not find Chrome executable on this system');
+      }
     }
 
-    // Launch headless browser with Render-compatible args
+    // Launch headless browser
     browser = await puppeteer.launch({
       headless: 'new',
       executablePath: executablePath,

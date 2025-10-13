@@ -24,8 +24,15 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <!-- Configure backend API URL -->
     <script>
+        // Auto-detect: use localhost when running locally, otherwise use Render
+        const isLocal = window.location.hostname === 'localhost' ||
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.protocol === 'file:';
+
         window.PDF_AI_CONFIG = {
-            API_URL: 'https://ebook-ai-companion.onrender.com/api/chat'
+            API_URL: isLocal
+                ? 'http://localhost:3001/api/chat'
+                : 'https://ebook-ai-companion.onrender.com/api/chat'
         };
     </script>
 </head>
