@@ -1,6 +1,18 @@
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+// Configure marked.js for proper HTML/markdown rendering
+marked.setOptions({
+    breaks: true,        // Convert \n to <br>
+    gfm: true,          // GitHub Flavored Markdown
+    headerIds: true,    // Add IDs to headers
+    mangle: false,      // Don't escape HTML entities
+    sanitize: false,    // Allow HTML (we trust Claude's output)
+    smartLists: true,   // Use smarter list behavior
+    smartypants: false, // Don't replace quotes/dashes
+    xhtml: false        // Don't use self-closing tags
+});
+
 // API Configuration
 const DEFAULT_API_URL = 'http://localhost:3001/api/chat';
 const globalConfig = typeof window !== 'undefined' ? window.PDF_AI_CONFIG : undefined;
@@ -2267,14 +2279,14 @@ function updateStreamingMessage(messageDiv, text) {
     // Check if user is near the bottom before updating (with 100px threshold)
     const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
 
-    // Parse markdown in real-time (but don't apply syntax highlighting yet)
-    let html = marked.parse(text);
-    html = renderLatex(html);
+    // During streaming: show plain text only (no markdown parsing on incomplete text!)
+    contentDiv.textContent = text;
 
     // Add cursor at the end
-    html += '<span class="streaming-cursor">▋</span>';
-
-    contentDiv.innerHTML = html;
+    const cursorSpan = document.createElement('span');
+    cursorSpan.className = 'streaming-cursor';
+    cursorSpan.textContent = '▋';
+    contentDiv.appendChild(cursorSpan);
 
     // Only auto-scroll if user was already near the bottom
     if (isNearBottom) {
@@ -2292,13 +2304,24 @@ function finalizeStreamingMessage(messageDiv, text) {
     // Clear any broken HTML first
     contentDiv.innerHTML = '';
 
+    // Force reflow to ensure DOM is completely cleared
+    void contentDiv.offsetHeight;
+
     // Small delay to ensure DOM is cleared, then re-parse completely
     setTimeout(() => {
+        console.log('🔄 Re-rendering markdown from scratch...');
+
         // Parse markdown with full formatting from scratch
         let html = marked.parse(text);
+
+        console.log('✅ Marked.parse() complete, applying LaTeX...');
         html = renderLatex(html);
 
+        console.log('✅ Setting final HTML...');
         contentDiv.innerHTML = html;
+
+        // Force another reflow to ensure rendering completes
+        void contentDiv.offsetHeight;
 
         // Apply syntax highlighting to code blocks
         contentDiv.querySelectorAll('pre code').forEach((block) => {
