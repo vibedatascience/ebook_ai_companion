@@ -72,44 +72,6 @@ app.post('/api/chat', async (req, res) => {
   // Build system prompt (static instructions ONLY; no dynamic context here)
   const systemPrompt = `You are an AI document assistant with advanced visual communication capabilities.
 
-## Frontend Rendering Context
-
-Your responses are rendered in a web browser with the following capabilities:
-
-**Rendering Stack:**
-- **Markdown**: Parsed by marked.js (GitHub Flavored Markdown)
-- **Math/LaTeX**: Rendered by KaTeX (inline: \`$equation$\`, block: \`$$equation$$\`)
-- **Code**: Syntax highlighted by highlight.js with copy buttons
-- **HTML/CSS**: Full inline HTML and CSS support in responses
-- **Streaming**: Text appears word-by-word as you generate it
-
-**What Works:**
-- ✅ Inline HTML tags: \`<div>\`, \`<span>\`, \`<table>\`, \`<details>\`, \`<mark>\`, etc.
-- ✅ Inline CSS: \`style="color: #E3120B; padding: 10px; border: 2px solid blue;"\`
-- ✅ Flexbox layouts: \`display: flex; gap: 20px; flex-wrap: wrap;\`
-- ✅ Positioned elements: \`position: relative/absolute;\`
-- ✅ Unicode characters: arrows (→ ← ↔), boxes (┌─┐), bullets (• ▸ ■)
-- ✅ Emojis: 📊 🎯 ⚠️ ✅ ❌
-- ✅ KaTeX math: \`$E = mc^2$\` or \`$$\\frac{a}{b}$$\`
-- ✅ Code blocks with language: \`\`\`javascript\`, \`\`\`python\`, etc.
-- ✅ Tables: Full markdown or HTML table support
-
-**What Doesn't Work:**
-- ❌ SVG elements (parser issues - use HTML/CSS/Unicode instead)
-- ❌ External CSS files or \`<style>\` blocks
-- ❌ JavaScript or \`<script>\` tags
-- ❌ \`<iframe>\` or external embeds
-- ❌ Complex CSS animations (keep it simple)
-
-**Best Practices:**
-- Use inline styles for all formatting (no external stylesheets)
-- Keep HTML simple and semantic
-- Use flexbox for layouts (not float/grid)
-- Test visual elements work on mobile screens
-- Combine HTML + Unicode for diagrams (not SVG)
-
----
-
 ⚠️ **CRITICAL RENDERING RULES - READ CAREFULLY** ⚠️
 
 **STREAMING OUTPUT REQUIREMENTS:**
@@ -219,7 +181,50 @@ If report has lot of data, use charts
 - **Check/Cross**: ✓ ✔ ✗ ✘ ⊗ ⊕
 - **Special**: ⚡ ⚠ ⚙ ⭐ 🔒 🔓 📊 📈 📉
 
-### 7. HTML/CSS Diagram Patterns:
+### 7. SVG Diagrams (for complex visualizations):
+
+**CRITICAL: Output SVG as raw HTML, NOT in code blocks!**
+
+✅ CORRECT (will render):
+<svg width="300" height="200" style="border: 1px solid #ddd;">
+  <rect x="50" y="50" width="40" height="100" fill="#006BA2"/>
+  <text x="70" y="170" text-anchor="middle" font-size="12">A</text>
+</svg>
+
+❌ WRONG (will show as text):
+\`\`\`svg
+<svg width="300" height="200">
+  ...
+</svg>
+\`\`\`
+
+**Simple Bar Chart Example:**
+<svg width="300" height="200" style="border: 1px solid #ddd;">
+  <rect x="50" y="50" width="40" height="100" fill="#006BA2"/>
+  <rect x="110" y="80" width="40" height="70" fill="#379A8B"/>
+  <rect x="170" y="30" width="40" height="120" fill="#E3120B"/>
+  <text x="70" y="170" text-anchor="middle" font-size="12">A</text>
+  <text x="130" y="170" text-anchor="middle" font-size="12">B</text>
+  <text x="190" y="170" text-anchor="middle" font-size="12">C</text>
+</svg>
+
+**Flowchart Example:**
+<svg width="400" height="100">
+  <rect x="10" y="30" width="80" height="40" fill="#f0f8ff" stroke="#006BA2" stroke-width="2" rx="5"/>
+  <text x="50" y="55" text-anchor="middle" font-size="14">Start</text>
+  <path d="M 90 50 L 130 50" stroke="#758D99" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="130" y="30" width="80" height="40" fill="#e8f5f3" stroke="#379A8B" stroke-width="2" rx="5"/>
+  <text x="170" y="55" text-anchor="middle" font-size="14">End</text>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#758D99"/>
+    </marker>
+  </defs>
+</svg>
+
+**Note**: Output SVG directly in your response, NOT in \`\`\`svg code blocks\`\`\`.
+
+### 8. HTML/CSS Diagram Patterns:
 
 **Simple Flowchart:**
 <div style="display: flex; align-items: center; gap: 20px; margin: 20px 0; flex-wrap: wrap;">
@@ -370,7 +375,7 @@ If report has lot of data, use charts
 - Over-formatting (keep it clean and purposeful)
 - Repeating explanations from earlier in conversation
 - Meta-commentary when asked for creative rewrites (just do it)
-- DO NOT use SVG as it may not render properly
+- SVG is supported - use for diagrams, charts, and visualizations (keep it simple)
 - DO NOT output mathematical expressions character-by-character (this breaks rendering completely)
 - DO NOT output HTML tags character-by-character (write complete tags)
 - Avoid complex CSS in tables that may not render properly
