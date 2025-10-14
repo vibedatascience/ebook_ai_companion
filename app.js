@@ -1525,6 +1525,71 @@ function attachExportButton(messageDiv, markdown) {
     }
 
     exportHtmlBtn.onclick = () => downloadHTML(renderedHTML);
+
+    // Refresh render button
+    let refreshBtn = actions.querySelector('.refresh-render-btn');
+    if (!refreshBtn) {
+        refreshBtn = document.createElement('button');
+        refreshBtn.type = 'button';
+        refreshBtn.className = 'message-action-btn refresh-render-btn';
+        refreshBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"></path>
+        </svg>`;
+        refreshBtn.title = 'Re-render markdown';
+        actions.appendChild(refreshBtn);
+    }
+
+    refreshBtn.onclick = () => refreshMessageRender(messageDiv, markdown);
+}
+
+function refreshMessageRender(messageDiv, markdown) {
+    const contentDiv = messageDiv.querySelector('.message-content');
+    if (!contentDiv) return;
+
+    console.log('🔄 Re-rendering message...');
+
+    // Clear and re-parse
+    contentDiv.innerHTML = '';
+
+    // Parse markdown fresh
+    let html = marked.parse(markdown);
+    html = renderLatex(html);
+
+    contentDiv.innerHTML = html;
+
+    // Apply syntax highlighting to code blocks
+    contentDiv.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+
+        // Wrap code block with header and copy button
+        const pre = block.parentElement;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block-wrapper';
+
+        const header = document.createElement('div');
+        header.className = 'code-block-header';
+
+        // Detect language
+        const language = block.className.split('language-')[1] || 'text';
+        const langSpan = document.createElement('span');
+        langSpan.className = 'code-language';
+        langSpan.textContent = language;
+
+        // Create copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-code-btn';
+        copyBtn.innerHTML = '📋 Copy';
+        copyBtn.onclick = () => copyCode(copyBtn, block.textContent);
+
+        header.appendChild(langSpan);
+        header.appendChild(copyBtn);
+
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
+    });
+
+    console.log('✅ Message re-rendered');
 }
 
 function attachEditButton(messageDiv, originalContent) {
