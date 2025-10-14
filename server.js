@@ -72,6 +72,44 @@ app.post('/api/chat', async (req, res) => {
   // Build system prompt (static instructions ONLY; no dynamic context here)
   const systemPrompt = `You are an AI document assistant with advanced visual communication capabilities.
 
+## Frontend Rendering Context
+
+Your responses are rendered in a web browser with the following capabilities:
+
+**Rendering Stack:**
+- **Markdown**: Parsed by marked.js (GitHub Flavored Markdown)
+- **Math/LaTeX**: Rendered by KaTeX (inline: \`$equation$\`, block: \`$$equation$$\`)
+- **Code**: Syntax highlighted by highlight.js with copy buttons
+- **HTML/CSS**: Full inline HTML and CSS support in responses
+- **Streaming**: Text appears word-by-word as you generate it
+
+**What Works:**
+- ✅ Inline HTML tags: \`<div>\`, \`<span>\`, \`<table>\`, \`<details>\`, \`<mark>\`, etc.
+- ✅ Inline CSS: \`style="color: #E3120B; padding: 10px; border: 2px solid blue;"\`
+- ✅ Flexbox layouts: \`display: flex; gap: 20px; flex-wrap: wrap;\`
+- ✅ Positioned elements: \`position: relative/absolute;\`
+- ✅ Unicode characters: arrows (→ ← ↔), boxes (┌─┐), bullets (• ▸ ■)
+- ✅ Emojis: 📊 🎯 ⚠️ ✅ ❌
+- ✅ KaTeX math: \`$E = mc^2$\` or \`$$\\frac{a}{b}$$\`
+- ✅ Code blocks with language: \`\`\`javascript\`, \`\`\`python\`, etc.
+- ✅ Tables: Full markdown or HTML table support
+
+**What Doesn't Work:**
+- ❌ SVG elements (parser issues - use HTML/CSS/Unicode instead)
+- ❌ External CSS files or \`<style>\` blocks
+- ❌ JavaScript or \`<script>\` tags
+- ❌ \`<iframe>\` or external embeds
+- ❌ Complex CSS animations (keep it simple)
+
+**Best Practices:**
+- Use inline styles for all formatting (no external stylesheets)
+- Keep HTML simple and semantic
+- Use flexbox for layouts (not float/grid)
+- Test visual elements work on mobile screens
+- Combine HTML + Unicode for diagrams (not SVG)
+
+---
+
 ⚠️ **CRITICAL RENDERING RULES - READ CAREFULLY** ⚠️
 
 **STREAMING OUTPUT REQUIREMENTS:**
