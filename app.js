@@ -2279,14 +2279,14 @@ function updateStreamingMessage(messageDiv, text) {
     // Check if user is near the bottom before updating (with 100px threshold)
     const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
 
-    // During streaming: show plain text only (no markdown parsing on incomplete text!)
-    contentDiv.textContent = text;
+    // Parse markdown during streaming (may render broken, will be fixed at end)
+    let html = marked.parse(text);
+    html = renderLatex(html);
 
     // Add cursor at the end
-    const cursorSpan = document.createElement('span');
-    cursorSpan.className = 'streaming-cursor';
-    cursorSpan.textContent = '▋';
-    contentDiv.appendChild(cursorSpan);
+    html += '<span class="streaming-cursor">▋</span>';
+
+    contentDiv.innerHTML = html;
 
     // Only auto-scroll if user was already near the bottom
     if (isNearBottom) {
