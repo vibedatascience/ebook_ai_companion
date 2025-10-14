@@ -1540,6 +1540,37 @@ function attachExportButton(messageDiv, markdown) {
     }
 
     refreshBtn.onclick = () => refreshMessageRender(messageDiv, markdown);
+
+    // Copy markdown button
+    let copyMdBtn = actions.querySelector('.copy-md-btn');
+    if (!copyMdBtn) {
+        copyMdBtn = document.createElement('button');
+        copyMdBtn.type = 'button';
+        copyMdBtn.className = 'message-action-btn copy-md-btn';
+        copyMdBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>`;
+        copyMdBtn.title = 'Copy markdown';
+        actions.appendChild(copyMdBtn);
+    }
+
+    copyMdBtn.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(markdown);
+            copyMdBtn.innerHTML = '✓ Copied!';
+            copyMdBtn.classList.add('copied');
+            setTimeout(() => {
+                copyMdBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>`;
+                copyMdBtn.classList.remove('copied');
+            }, 2000);
+        } catch (err) {
+            console.error('Failed to copy markdown:', err);
+        }
+    };
 }
 
 function refreshMessageRender(messageDiv, markdown) {
