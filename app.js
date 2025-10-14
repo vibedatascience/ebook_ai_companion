@@ -2288,48 +2288,55 @@ function finalizeStreamingMessage(messageDiv, text) {
     // Remove streaming class
     messageDiv.classList.remove('message-streaming');
 
-    // Parse markdown with full formatting
-    let html = marked.parse(text);
-    html = renderLatex(html);
+    // CRITICAL: Force clean re-parse from scratch to fix any broken rendering from streaming
+    // Clear any broken HTML first
+    contentDiv.innerHTML = '';
 
-    contentDiv.innerHTML = html;
+    // Small delay to ensure DOM is cleared, then re-parse completely
+    setTimeout(() => {
+        // Parse markdown with full formatting from scratch
+        let html = marked.parse(text);
+        html = renderLatex(html);
 
-    // Apply syntax highlighting to code blocks
-    contentDiv.querySelectorAll('pre code').forEach((block) => {
-        hljs.highlightElement(block);
+        contentDiv.innerHTML = html;
 
-        // Wrap code block with header and copy button
-        const pre = block.parentElement;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'code-block-wrapper';
+        // Apply syntax highlighting to code blocks
+        contentDiv.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
 
-        const header = document.createElement('div');
-        header.className = 'code-block-header';
+            // Wrap code block with header and copy button
+            const pre = block.parentElement;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block-wrapper';
 
-        // Detect language
-        const language = block.className.split('language-')[1] || 'text';
-        const langSpan = document.createElement('span');
-        langSpan.className = 'code-language';
-        langSpan.textContent = language;
+            const header = document.createElement('div');
+            header.className = 'code-block-header';
 
-        // Create copy button
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-code-btn';
-        copyBtn.innerHTML = '📋 Copy';
-        copyBtn.onclick = () => copyCode(copyBtn, block.textContent);
+            // Detect language
+            const language = block.className.split('language-')[1] || 'text';
+            const langSpan = document.createElement('span');
+            langSpan.className = 'code-language';
+            langSpan.textContent = language;
 
-        header.appendChild(langSpan);
-        header.appendChild(copyBtn);
+            // Create copy button
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-code-btn';
+            copyBtn.innerHTML = '📋 Copy';
+            copyBtn.onclick = () => copyCode(copyBtn, block.textContent);
 
-        pre.parentNode.insertBefore(wrapper, pre);
-        wrapper.appendChild(header);
-        wrapper.appendChild(pre);
-    });
+            header.appendChild(langSpan);
+            header.appendChild(copyBtn);
 
-    attachExportButton(messageDiv, text);
+            pre.parentNode.insertBefore(wrapper, pre);
+            wrapper.appendChild(header);
+            wrapper.appendChild(pre);
+        });
 
-    // Final auto-scroll
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+        attachExportButton(messageDiv, text);
+
+        // Final auto-scroll
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }, 100); // 100ms delay to ensure clean DOM state
 }
 
 // Chat font size controls
