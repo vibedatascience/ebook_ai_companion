@@ -2144,6 +2144,11 @@ async function sendMessage() {
 
             console.log(`Stream complete. Received ${chunkCount} text chunks`);
 
+            // Log the full response to console for debugging
+            console.log('=== FULL LLM RESPONSE ===');
+            console.log(fullText);
+            console.log('=== END LLM RESPONSE ===');
+
             if (messageDiv.classList.contains('message-streaming')) {
                 if (fullText.trim().length > 0) {
                     finalizeStreamingMessage(messageDiv, fullText);
