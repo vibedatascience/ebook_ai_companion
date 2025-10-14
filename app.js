@@ -2141,14 +2141,15 @@ async function sendMessage() {
                         try {
                             const parsed = JSON.parse(data);
 
-                            // Handle content_block_delta events
+                            // Handle content_block_delta events (actual text chunks)
                             if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
                                 fullText += parsed.delta.text;
                                 chunkCount++;
                                 updateStreamingMessage(messageDiv, fullText);
                             }
+                            // Ignore other event types (message_start, content_block_start, etc.)
                         } catch (e) {
-                            console.warn('Failed to parse chunk:', data.substring(0, 100));
+                            // Silently ignore parse errors (incomplete JSON chunks from stream)
                         }
                     }
                 }
