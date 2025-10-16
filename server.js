@@ -38,7 +38,8 @@ app.post('/api/chat', async (req, res) => {
     pdfPages,                   // optional: [{ page: number, text: string }]
     contextInfo,                // expects { currentPage, totalPages, includedPages: number[] }
     conversationHistory,        // prior turns (Anthropic role/content objects)
-    conversationId              // required for proper delta caching; fallback to stateless if missing
+    conversationId,             // required for proper delta caching; fallback to stateless if missing
+    model                       // optional: model to use (defaults to MODEL constant)
   } = req.body;
 
   console.log('📨 Received chat request:', {
@@ -510,8 +511,11 @@ if (conversationHistory && conversationHistory.length > 0) {
 messages.push({ role: 'user', content: userContent }); // userContent already delta-safe
 
 
+    // Use provided model or fall back to default
+    const selectedModel = model || MODEL;
+
     const requestBody = {
-      model: MODEL,
+      model: selectedModel,
       max_tokens: 64000,
       stream: true,
       system: systemPrompt,

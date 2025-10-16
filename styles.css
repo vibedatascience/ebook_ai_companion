@@ -1099,6 +1099,47 @@ body {
     gap: 8px;
 }
 
+/* Model Selector Styles */
+.model-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(102, 126, 234, 0.08);
+    padding: 6px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+.model-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #667eea;
+    user-select: none;
+}
+
+.model-select {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(102, 126, 234, 0.2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #2d3748;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.model-select:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(102, 126, 234, 0.4);
+}
+
+.model-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 .font-size-control {
     display: flex;
     align-items: center;
