@@ -52,6 +52,7 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'Message is required' });
   }
   // Allow usage without document (general chatbot mode)
+  const isFirstTurn = !(conversationHistory && conversationHistory.length);
 
   const requestApiKeyHeader = (req.headers['x-api-key'] || '').toString().trim();
   const effectiveApiKey = requestApiKeyHeader || ANTHROPIC_API_KEY;
