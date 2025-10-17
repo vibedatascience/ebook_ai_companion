@@ -156,6 +156,18 @@ if (stopStreamBtn) {
     stopStreamBtn.addEventListener('click', stopCurrentStream);
 }
 
+// Mobile: Tap PDF section to expand/collapse on mobile
+pdfSection.addEventListener('click', (e) => {
+    // Only on mobile screens (< 768px)
+    if (window.innerWidth < 768 && pdfSection.classList.contains('has-document')) {
+        // Don't toggle if clicking on controls
+        if (e.target.closest('.toolbar') || e.target.closest('button')) {
+            return;
+        }
+        pdfSection.classList.toggle('mobile-expanded');
+    }
+});
+
 // Auto-resize textarea
 chatInput.addEventListener('input', function() {
     this.style.height = 'auto';
@@ -309,6 +321,9 @@ async function handleFileSelect(event) {
         pdfViewer.style.display = 'flex';
         chatInput.disabled = false;
         sendBtn.disabled = false;
+
+        // Add mobile class for responsive behavior
+        pdfSection.classList.add('has-document');
 
         // Clear welcome message and show reset button
         chatMessages.innerHTML = '';
@@ -927,6 +942,9 @@ async function handleUrlLoad() {
         // Show text container with iframe
         textContainer.style.display = 'block';
 
+        // Add mobile class for responsive behavior
+        pdfSection.classList.add('has-document');
+
         chatInput.disabled = false;
         sendBtn.disabled = false;
 
@@ -1364,6 +1382,11 @@ function resetApp() {
     uploadArea.style.display = 'flex';
     pdfViewer.style.display = 'none';
     fileInput.value = '';
+
+    // Remove mobile document class
+    pdfSection.classList.remove('has-document');
+    pdfSection.classList.remove('mobile-expanded');
+
     chatMessages.innerHTML = '<div class="welcome-message"><p>👋 Hi! Upload a document or ask me anything!</p></div>';
     chatInput.value = '';
     zoomLevel.textContent = '100%';
