@@ -1364,9 +1364,7 @@ function resetApp() {
     uploadArea.style.display = 'flex';
     pdfViewer.style.display = 'none';
     fileInput.value = '';
-    chatMessages.innerHTML = '<div class="welcome-message"><p>👋 Upload a document to start chatting!</p></div>';
-    chatInput.disabled = true;
-    sendBtn.disabled = true;
+    chatMessages.innerHTML = '<div class="welcome-message"><p>👋 Hi! Upload a document or ask me anything!</p></div>';
     chatInput.value = '';
     zoomLevel.textContent = '100%';
     pageInput.value = 1;

@@ -1104,22 +1104,22 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: rgba(102, 126, 234, 0.08);
+    background: rgba(242, 101, 50, 0.08);
     padding: 6px 10px;
     border-radius: 10px;
-    border: 1px solid rgba(102, 126, 234, 0.15);
+    border: 1px solid rgba(242, 101, 50, 0.15);
 }
 
 .model-label {
     font-size: 13px;
     font-weight: 600;
-    color: #667eea;
+    color: #f26532;
     user-select: none;
 }
 
 .model-select {
     background: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(102, 126, 234, 0.2);
+    border: 1px solid rgba(242, 101, 50, 0.2);
     border-radius: 6px;
     padding: 4px 8px;
     font-size: 13px;
@@ -1132,12 +1132,12 @@ body {
 
 .model-select:hover {
     background: rgba(255, 255, 255, 1);
-    border-color: rgba(102, 126, 234, 0.4);
+    border-color: rgba(242, 101, 50, 0.4);
 }
 
 .model-select:focus {
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #f26532;
+    box-shadow: 0 0 0 3px rgba(242, 101, 50, 0.1);
 }
 
 .font-size-control {

@@ -51,12 +51,7 @@ app.post('/api/chat', async (req, res) => {
   if (!message) {
     return res.status(400).json({ error: 'Message is required' });
   }
-  // Require some form of document content on first turn
-  const isFirstTurn = !(conversationHistory && conversationHistory.length);
-  const hasValidPages = Array.isArray(pdfPages) && pdfPages.length > 0;
-  if (isFirstTurn && !pdfText && !hasValidPages) {
-    return res.status(400).json({ error: 'PDF text or pdfPages are required on the first turn' });
-  }
+  // Allow usage without document (general chatbot mode)
 
   const requestApiKeyHeader = (req.headers['x-api-key'] || '').toString().trim();
   const effectiveApiKey = requestApiKeyHeader || ANTHROPIC_API_KEY;
@@ -71,7 +66,10 @@ app.post('/api/chat', async (req, res) => {
 
 
   // Build system prompt (static instructions ONLY; no dynamic context here)
-  const systemPrompt = `You are an AI document assistant with advanced visual communication capabilities.
+  // Check if document context is available
+  const hasDocument = (Array.isArray(pdfPages) && pdfPages.length > 0) || pdfText;
+
+  const systemPrompt = `You are ${hasDocument ? 'an AI document assistant with advanced visual communication capabilities' : 'Claude, a helpful and thoughtful AI assistant'}. ${hasDocument ? '' : 'Be conversational, accurate, and engaging. '}
 
 ⚠️ **CRITICAL RENDERING RULES - READ CAREFULLY** ⚠️
 
@@ -92,7 +90,7 @@ When streaming responses, you MUST write HTML and inline styles as complete, unb
 5. When using HTML color codes, write the entire style attribute at once: style="color: #758D99"
 6. Never split CSS properties across multiple output chunks
 
-## Step 1: Document Type Detection
+${hasDocument ? `## Step 1: Document Type Detection
 
 Quickly identify the document type and adapt your response style:
 
@@ -122,7 +120,7 @@ Quickly identify the document type and adapt your response style:
   - Low: "The document doesn't explicitly address this, but..."
 - ONLY PROVIDE CITATIONS FORM AN ACTUAL BOOK OR PAPER, NOT FROM PDF OF DATA TABLES OR WEBSITE OR ANYTHING ELSE. ONLY PROPER BOOKs.
 
----
+---` : ''}
 
 ## Core Formatting Rules
 - Default to **Markdown** for structure. Use HTML only when it adds clear visual value.
