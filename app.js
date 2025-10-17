@@ -54,6 +54,7 @@ let currentStream = null; // Track active streaming request for cancellation
 let conversationId = null; // Unique ID for this conversation session (enables delta optimization)
 
 // DOM Elements
+const appWrapper = document.querySelector('.app-wrapper');
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
 const uploadBtn = document.getElementById('uploadBtn');
@@ -165,6 +166,23 @@ pdfSection.addEventListener('click', (e) => {
             return;
         }
         pdfSection.classList.toggle('mobile-expanded');
+    }
+});
+
+// Mobile: Tap top of chat area to temporarily show headers
+chatMessages.addEventListener('click', (e) => {
+    if (window.innerWidth < 768 && appWrapper.classList.contains('mobile-hide-headers')) {
+        const rect = chatMessages.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+
+        // If clicking near top (within 100px), show headers temporarily
+        if (clickY < 100) {
+            appWrapper.classList.add('show-headers');
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                appWrapper.classList.remove('show-headers');
+            }, 3000);
+        }
     }
 });
 
@@ -2039,6 +2057,10 @@ function resetChat() {
         chatMessages.innerHTML = '';
         conversationHistory = []; // Clear conversation history
         conversationId = generateConversationId(); // Generate new conversation ID for delta optimization
+
+        // Show headers again on mobile
+        appWrapper.classList.remove('mobile-hide-headers');
+
         addMessageToChat('assistant', 'Chat cleared! What would you like to know about the document?');
     }
 }
@@ -2098,6 +2120,11 @@ async function sendMessage() {
     addMessageToChat('user', message);
     chatInput.value = '';
     chatInput.style.height = 'auto';
+
+    // Hide headers on mobile after first message
+    if (window.innerWidth < 768) {
+        appWrapper.classList.add('mobile-hide-headers');
+    }
 
     // Disable input while processing
     chatInput.disabled = true;

@@ -1789,6 +1789,29 @@ body {
         display: none;
     }
 
+    /* Hide headers when user is chatting (triggered by JS) */
+    .mobile-hide-headers .app-header,
+    .mobile-hide-headers .chat-header {
+        max-height: 0;
+        overflow: hidden;
+        padding: 0;
+        border: none;
+        transition: all 0.3s ease;
+    }
+
+    /* Show headers on hover/tap (so user can still access controls) */
+    .mobile-hide-headers:hover .app-header,
+    .mobile-hide-headers.show-headers .app-header,
+    .mobile-hide-headers:hover .chat-header,
+    .mobile-hide-headers.show-headers .chat-header {
+        max-height: 200px;
+        padding: 12px 16px;
+    }
+
+    .mobile-hide-headers .chat-header {
+        padding: 10px 12px;
+    }
+
     /* PDF section hidden by default on mobile, shows when document loaded */
     .pdf-section {
         flex: 0 0 0;
